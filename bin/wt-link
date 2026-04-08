@@ -1,0 +1,630 @@
+#!/usr/bin/env bash
+# wt-link — Mount or unmount a git worktree as a fully functional local Herd site.
+#
+# OVERVIEW
+#   When developing on a feature branch using a git worktree, this script wires
+#   up all the pieces that make the worktree browsable at the same local URL as
+#   the canonical (main) site:
+#
+#     • Downloads WordPress core (version from setup.json)
+#     • Copies wp-config.php from the canonical site
+#     • Symlinks git-untracked plugins and uploads from the canonical site
+#     • Symlinks node_modules from the canonical site (avoids version skew)
+#     • Runs `composer install` in each Eightshift package
+#     • Builds JS/CSS assets (`bun run build`)
+#     • Runs `herd link <site-name>` to point the local domain here
+#
+#   On `unmount` every symlink is removed, WP core files are deleted, and
+#   `herd unlink` restores the canonical site.
+#
+# USAGE
+#   wt-link mount              Set up current worktree as the local dev site
+#   wt-link unmount            Tear it down and restore the canonical site
+#   wt-link status             Show what is linked / installed
+#   wt-link mount --cwd PATH   Mount a specific worktree directory
+#
+# REQUIREMENTS
+#   wp-cli, herd, bun, composer, jq
+#
+# CONFIGURATION (optional — auto-detected from setup.json when omitted)
+#   CANONICAL_SITE   Absolute path to the canonical (main) site.
+#                    Default: ~/Sites/<site-name> where <site-name> is
+#                    extracted from setup.json urls.local.
+
+# shellcheck disable=SC2034  # colour vars used via echo -e
+
+set -euo pipefail
+
+WT_LINK_VERSION="1.0.0"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+BOLD="\033[1m"
+GREEN="\033[0;32m"
+YELLOW="\033[0;33m"
+RED="\033[0;31m"
+CYAN="\033[0;36m"
+RESET="\033[0m"
+
+log()     { echo -e "${BOLD}${CYAN}▶ $*${RESET}"; }
+success() { echo -e "${GREEN}✓ $*${RESET}"; }
+warn()    { echo -e "${YELLOW}⚠ $*${RESET}"; }
+error()   { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
+step()    { echo -e "  ${BOLD}$*${RESET}"; }
+
+require_cmd() {
+    command -v "$1" &>/dev/null || error "Required command not found: $1"
+}
+
+# wp-cli outputs deprecation notices to stdout (not stderr) starting with a
+# leading newline. Strip empty lines, deprecation lines, and trailing whitespace.
+wp_clean() {
+    wp "$@" 2>/dev/null | grep -v -e '^[[:space:]]*$' -e 'Deprecated' | head -1 | tr -d '\n'
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Argument parsing — extract --cwd early, then shift remaining args
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Show help / version before any project resolution
+case "${1:-help}" in
+    help|--help|-h)
+        echo "Usage: wt-link <command> [--cwd PATH]"
+        echo ""
+        echo "Commands:"
+        echo "  mount    Set up a git worktree as a fully working local Herd site"
+        echo "  unmount  Tear down and restore the canonical site"
+        echo "  status   Show current link status"
+        echo ""
+        echo "Options:"
+        echo "  --cwd PATH   Run against a specific worktree directory (default: current directory)"
+        echo ""
+        echo "Short aliases (fish):"
+        echo "  wlm   wt-link mount"
+        echo "  wlu   wt-link unmount"
+        echo "  wls   wt-link status"
+        echo ""
+        echo "Environment:"
+        echo "  CANONICAL_SITE   Override the canonical site path (default: ~/Sites/<site-name>)"
+        echo ""
+        echo "Examples:"
+        echo "  wt-link mount"
+        echo "  wt-link mount --cwd ~/Sites/myproject.feature-branch"
+        echo "  CANONICAL_SITE=~/Sites/myproject wt-link mount"
+        echo "  wt-link unmount"
+        echo "  wt-link status"
+        exit 0
+        ;;
+    --version|-V)
+        echo "wt-link $WT_LINK_VERSION"
+        exit 0
+        ;;
+esac
+
+EXPLICIT_CWD=""
+FILTERED_ARGS=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --cwd)
+            [[ -n "${2:-}" ]] || error "--cwd requires a path argument"
+            EXPLICIT_CWD="$2"
+            shift 2
+            ;;
+        --cwd=*)
+            EXPLICIT_CWD="${1#--cwd=}"
+            shift
+            ;;
+        *)
+            FILTERED_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+set -- "${FILTERED_ARGS[@]+"${FILTERED_ARGS[@]}"}"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Resolution — determine project root from CWD or --cwd flag
+# ──────────────────────────────────────────────────────────────────────────────
+
+if [[ -n "$EXPLICIT_CWD" ]]; then
+    WORKTREE_ROOT="$(cd "$EXPLICIT_CWD" && pwd)"
+else
+    WORKTREE_ROOT="$(pwd)"
+fi
+
+SETUP_JSON="$WORKTREE_ROOT/setup.json"
+
+# Gracefully skip non-WP projects (no error — safe to call unconditionally)
+if [[ ! -f "$SETUP_JSON" ]]; then
+    warn "Not a WordPress project (setup.json not found at $WORKTREE_ROOT) — skipping"
+    exit 0
+fi
+
+# Extract local URL from setup.json (e.g. "https://infobip.test/")
+LOCAL_URL="$(jq -r '.urls.local // empty' "$SETUP_JSON" 2>/dev/null || true)"
+[[ -n "$LOCAL_URL" ]] || error "Could not read urls.local from setup.json"
+
+# Derive site name: strip scheme, trailing slash, and .test/.local/.dev TLD
+# e.g. "https://infobip.test/" -> "infobip"
+SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.(test|local|dev)$//')"
+
+# WP version from setup.json
+WP_VERSION="$(jq -r '.core // "latest"' "$SETUP_JSON" 2>/dev/null || echo "latest")"
+
+# Canonical site path (override with env var)
+CANONICAL_SITE="${CANONICAL_SITE:-$HOME/Sites/$SITE_NAME}"
+
+WP_CONTENT="$WORKTREE_ROOT/wp-content"
+CANONICAL_WP_CONTENT="$CANONICAL_SITE/wp-content"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Discover Eightshift packages (themes + first-party plugins)
+# Packages are directories under wp-content/themes/ or wp-content/plugins/
+# that contain a composer.json referencing infinum/eightshift-libs.
+# ──────────────────────────────────────────────────────────────────────────────
+
+find_eightshift_packages() {
+    local base_dirs=("$WP_CONTENT/themes" "$WP_CONTENT/plugins")
+    local packages=()
+    for base in "${base_dirs[@]}"; do
+        [[ -d "$base" ]] || continue
+        for dir in "$base"/*/; do
+            [[ -f "$dir/composer.json" ]] || continue
+            if grep -q "eightshift-libs\|EightshiftBoilerplate\|infinum" "$dir/composer.json" 2>/dev/null; then
+                packages+=("$dir")
+            fi
+        done
+    done
+    printf '%s\n' "${packages[@]}"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Find plugins that are NOT tracked in git (need to be symlinked from canonical)
+# ──────────────────────────────────────────────────────────────────────────────
+
+find_untracked_plugins() {
+    local plugins_dir="$WP_CONTENT/plugins"
+    local canonical_plugins="$CANONICAL_WP_CONTENT/plugins"
+    [[ -d "$canonical_plugins" ]] || return
+
+    for plugin_dir in "$canonical_plugins"/*/; do
+        local plugin_name
+        plugin_name="$(basename "$plugin_dir")"
+        local dest="$plugins_dir/$plugin_name"
+
+        # Skip if already present (tracked in git or already symlinked)
+        [[ -e "$dest" ]] && continue
+
+        # Also skip the symlink itself (in case canonical has symlinks pointing elsewhere)
+        echo "$plugin_dir"
+    done
+
+    # Also link index.php if missing
+    local idx="$plugins_dir/index.php"
+    local canonical_idx="$canonical_plugins/index.php"
+    [[ ! -e "$idx" && -f "$canonical_idx" ]] && echo "$canonical_idx"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# WP core marker file (present when WP core is installed)
+# ──────────────────────────────────────────────────────────────────────────────
+
+WP_CORE_MARKER="$WORKTREE_ROOT/wp-load.php"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STATE FILE — tracks what this script created so unmount is precise
+# ──────────────────────────────────────────────────────────────────────────────
+
+STATE_FILE="$WORKTREE_ROOT/.worktree-link-state"
+
+state_set() { echo "$1=$2" >> "$STATE_FILE"; }
+state_get() { grep "^$1=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MOUNT
+# ──────────────────────────────────────────────────────────────────────────────
+
+cmd_mount() {
+    require_cmd wp
+    require_cmd herd
+    require_cmd composer
+    require_cmd bun
+
+    log "Mounting worktree as '$SITE_NAME' local site"
+    echo "  Worktree : $WORKTREE_ROOT"
+    echo "  Canonical: $CANONICAL_SITE"
+    echo "  Domain   : $SITE_NAME.test"
+    echo ""
+
+    [[ -d "$CANONICAL_SITE" ]] || error "Canonical site not found: $CANONICAL_SITE\nSet CANONICAL_SITE= env var to override."
+
+    # Ensure state file always exists after mount (even if everything was already present)
+    touch "$STATE_FILE"
+
+    # 1. WP Core ────────────────────────────────────────────────────────────────
+    if [[ -f "$WP_CORE_MARKER" ]]; then
+        success "WP core already present ($(wp_clean core version --path="$WORKTREE_ROOT" || echo 'unknown'))"
+    else
+        step "Downloading WordPress $WP_VERSION..."
+        local wp_cache_gz="$HOME/.wp-cli/cache/core/wordpress-${WP_VERSION}-en_US.tar.gz"
+
+        if [[ -f "$wp_cache_gz" ]]; then
+            step "  Extracting from WP-CLI cache..."
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            tar xzf "$wp_cache_gz" -C "$tmp_dir"
+            rsync -a --exclude='wp-content' "$tmp_dir/wordpress/" "$WORKTREE_ROOT/"
+            rm -rf "$tmp_dir"
+        else
+            # Fallback: download via WP-CLI into a temp dir, then rsync
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            wp core download --path="$tmp_dir" --version="$WP_VERSION" 2>/dev/null
+            rsync -a --exclude='wp-content' "$tmp_dir/" "$WORKTREE_ROOT/"
+            rm -rf "$tmp_dir"
+        fi
+        state_set "wp_core_installed" "1"
+        success "WP core $WP_VERSION installed"
+    fi
+
+    # 2. wp-config.php ──────────────────────────────────────────────────────────
+    if [[ -f "$WORKTREE_ROOT/wp-config.php" ]]; then
+        success "wp-config.php already present"
+    else
+        local canonical_config="$CANONICAL_SITE/wp-config.php"
+        [[ -f "$canonical_config" ]] || error "wp-config.php not found in canonical site: $canonical_config"
+        cp "$canonical_config" "$WORKTREE_ROOT/wp-config.php"
+        state_set "wp_config_copied" "1"
+        success "wp-config.php copied from canonical site"
+    fi
+
+    # 3. Symlink untracked plugins ───────────────────────────────────────────────
+    step "Symlinking untracked plugins from canonical site..."
+    local linked_count=0
+    while IFS= read -r plugin_path; do
+        [[ -z "$plugin_path" ]] && continue
+        local plugin_name
+        plugin_name="$(basename "$plugin_path")"
+        local dest="$WP_CONTENT/plugins/$plugin_name"
+
+        if [[ -L "$dest" ]]; then
+            : # already symlinked
+        elif [[ -e "$dest" ]]; then
+            warn "  $plugin_name — already exists, skipping"
+        else
+            # Resolve symlinks in canonical (e.g. eightshift-forms -> absolute path)
+            local link_target
+            if [[ -L "$plugin_path" ]]; then
+                link_target="$(readlink "$plugin_path")"
+            else
+                link_target="$plugin_path"
+            fi
+            ln -s "$link_target" "$dest"
+            echo "    linked: $plugin_name"
+            linked_count=$((linked_count + 1))
+        fi
+    done < <(find_untracked_plugins)
+    success "Plugins: $linked_count newly linked"
+
+    # 4. Symlink uploads ─────────────────────────────────────────────────────────
+    local uploads_dest="$WP_CONTENT/uploads"
+    local uploads_src="$CANONICAL_WP_CONTENT/uploads"
+    if [[ -L "$uploads_dest" ]]; then
+        success "uploads already symlinked"
+    elif [[ -d "$uploads_dest" ]]; then
+        warn "uploads dir already exists (not a symlink) — skipping"
+    elif [[ -d "$uploads_src" ]]; then
+        ln -s "$uploads_src" "$uploads_dest"
+        state_set "uploads_linked" "1"
+        success "uploads symlinked from canonical site"
+    else
+        warn "No uploads dir found in canonical site — skipping"
+    fi
+
+    # 5. Eightshift packages: composer + node_modules + build ────────────────────
+    local packages
+    mapfile -t packages < <(find_eightshift_packages)
+
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        warn "No Eightshift packages found"
+    fi
+
+    for pkg in "${packages[@]}"; do
+        local pkg_name
+        pkg_name="$(basename "$pkg")"
+        # Determine if pkg is a theme or plugin
+        local pkg_type="package"
+        [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+        [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
+
+        log "Setting up $pkg_type: $pkg_name"
+
+        # composer install
+        if [[ -f "$pkg/vendor/autoload.php" ]]; then
+            success "  composer: already installed"
+        else
+            step "  Running composer install..."
+            composer install --no-interaction --working-dir="$pkg" 2>/dev/null | tail -2 || warn "  composer install had warnings"
+            success "  composer: done"
+        fi
+
+        # node_modules — symlink from canonical if available, otherwise bun install
+        local node_modules_dest="$pkg/node_modules"
+        local canonical_pkg_node_modules=""
+
+        # Try to find matching package in canonical site
+        if [[ "$pkg_type" == "theme" ]]; then
+            canonical_pkg_node_modules="$CANONICAL_WP_CONTENT/themes/$pkg_name/node_modules"
+        elif [[ "$pkg_type" == "plugin" ]]; then
+            canonical_pkg_node_modules="$CANONICAL_WP_CONTENT/plugins/$pkg_name/node_modules"
+        fi
+
+        if [[ -L "$node_modules_dest" ]]; then
+            success "  node_modules: already symlinked"
+        elif [[ -d "$node_modules_dest" ]]; then
+            success "  node_modules: already installed"
+        elif [[ -n "$canonical_pkg_node_modules" && -d "$canonical_pkg_node_modules" ]]; then
+            ln -s "$canonical_pkg_node_modules" "$node_modules_dest"
+            state_set "node_modules_symlinked_$pkg_name" "1"
+            success "  node_modules: symlinked from canonical (avoids version skew)"
+        else
+            step "  Running bun install..."
+            bun install --cwd="$pkg" 2>/dev/null | tail -2 || warn "  bun install had warnings"
+            success "  node_modules: installed via bun"
+        fi
+
+        # build
+        local public_manifest="$pkg/public/manifest.json"
+        if [[ -f "$public_manifest" ]]; then
+            success "  build: already built"
+        else
+            # Check canonical for a pre-built public/ (useful for plugins not modified in this branch)
+            local canonical_public=""
+            if [[ "$pkg_type" == "theme" ]]; then
+                canonical_public="$CANONICAL_WP_CONTENT/themes/$pkg_name/public"
+            elif [[ "$pkg_type" == "plugin" ]]; then
+                canonical_public="$CANONICAL_WP_CONTENT/plugins/$pkg_name/public"
+            fi
+
+            if [[ -f "$canonical_public/manifest.json" ]]; then
+                step "  Copying pre-built public/ from canonical site..."
+                rsync -a "$canonical_public/" "$pkg/public/"
+                state_set "public_copied_$pkg_name" "1"
+                success "  build: copied from canonical (canonical has up-to-date build)"
+            else
+                step "  Running bun run build..."
+                (cd "$pkg" && bun run build 2>&1 | tail -5) || warn "  build had errors — check manually"
+                success "  build: done"
+            fi
+        fi
+    done
+
+    # 6. Herd link ───────────────────────────────────────────────────────────────
+    local herd_links_dir="$HOME/Library/Application Support/Herd/config/valet/Sites"
+    local herd_link="$herd_links_dir/$SITE_NAME"
+
+    if [[ -L "$herd_link" ]]; then
+        local current_target
+        current_target="$(readlink "$herd_link")"
+        if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
+            success "herd link already points to this worktree"
+        else
+            # Save where it pointed so unmount can restore it
+            state_set "herd_previous_target" "$current_target"
+            herd link "$SITE_NAME" 2>/dev/null
+            state_set "herd_linked" "1"
+            success "herd link updated (was: $current_target)"
+        fi
+    else
+        herd link "$SITE_NAME" 2>/dev/null
+        state_set "herd_linked" "1"
+        success "herd link created"
+    fi
+
+    # 7. DB upgrade check ────────────────────────────────────────────────────────
+    local db_version
+    db_version="$(wp_clean core version --path="$WORKTREE_ROOT" || true)"
+    echo ""
+    success "Done! Site is live at https://$SITE_NAME.test/"
+    echo ""
+    echo -e "  WP version : ${BOLD}$db_version${RESET}"
+    echo -e "  Theme      : $(wp_clean theme list --path="$WORKTREE_ROOT" --status=active --field=name || echo '(unknown)')"
+    echo ""
+    warn "If this is a WP version upgrade, visit https://$SITE_NAME.test/wp-admin/ to run the DB upgrade."
+    echo ""
+    echo -e "  Unmount with: ${BOLD}wt-link unmount${RESET}  or  ${BOLD}wlu${RESET}"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# UNMOUNT
+# ──────────────────────────────────────────────────────────────────────────────
+
+cmd_unmount() {
+    require_cmd herd
+
+    local has_state=0
+    [[ -f "$STATE_FILE" ]] && has_state=1
+
+    if [[ $has_state -eq 0 ]]; then
+        warn "No state file found — proceeding with best-effort cleanup (WP core and wp-config.php will NOT be removed)"
+        echo ""
+    fi
+
+    log "Unmounting worktree: $WORKTREE_ROOT"
+    echo "  Canonical: $CANONICAL_SITE"
+    echo ""
+
+    # 1. Herd unlink ─────────────────────────────────────────────────────────────
+    local herd_link="$HOME/Library/Application Support/Herd/config/valet/Sites/$SITE_NAME"
+    local previous_target=""
+    [[ $has_state -eq 1 ]] && previous_target="$(state_get herd_previous_target)"
+
+    if [[ -n "$previous_target" ]]; then
+        ln -sfn "$previous_target" "$herd_link"
+        success "herd link restored to: $previous_target"
+    else
+        herd unlink "$SITE_NAME" 2>/dev/null || true
+        success "herd unlink done"
+    fi
+
+    # 2. Remove uploads symlink ──────────────────────────────────────────────────
+    local uploads_dest="$WP_CONTENT/uploads"
+    if [[ -L "$uploads_dest" ]]; then
+        rm "$uploads_dest"
+        success "uploads symlink removed"
+    fi
+
+    # 3. Remove plugin symlinks ──────────────────────────────────────────────────
+    local plugins_dir="$WP_CONTENT/plugins"
+    local removed_plugins=0
+    if [[ -d "$plugins_dir" ]]; then
+        for entry in "$plugins_dir"/*; do
+            [[ -L "$entry" ]] || continue
+            rm "$entry"
+            removed_plugins=$((removed_plugins + 1))
+        done
+    fi
+    success "Removed $removed_plugins plugin symlinks"
+
+    # 4. Remove node_modules symlinks ────────────────────────────────────────────
+    for pkg in $(find_eightshift_packages); do
+        local node_modules_dest="$pkg/node_modules"
+        if [[ -L "$node_modules_dest" ]]; then
+            rm "$node_modules_dest"
+            success "  node_modules symlink removed: $(basename "$pkg")"
+        fi
+    done
+
+    # 5. Remove WP core files — only if this script installed them ───────────────
+    if [[ $has_state -eq 1 && "$(state_get wp_core_installed)" == "1" ]]; then
+        step "Removing WP core files..."
+        for d in wp-admin wp-includes; do
+            [[ -d "$WORKTREE_ROOT/$d" ]] && rm -rf "${WORKTREE_ROOT:?}/$d"
+        done
+        local wp_root_files=(
+            index.php wp-activate.php wp-blog-header.php wp-comments-post.php
+            wp-cron.php wp-links-opml.php wp-load.php wp-login.php wp-mail.php
+            wp-settings.php wp-signup.php wp-trackback.php xmlrpc.php
+            wp-config-sample.php license.txt readme.html
+        )
+        for f in "${wp_root_files[@]}"; do
+            [[ -f "$WORKTREE_ROOT/$f" ]] && rm "$WORKTREE_ROOT/$f"
+        done
+        success "WP core files removed"
+    elif [[ $has_state -eq 0 ]]; then
+        warn "WP core files left in place (no state file — manual cleanup required if needed)"
+    fi
+
+    # 6. Remove wp-config.php if we created it ───────────────────────────────────
+    if [[ $has_state -eq 1 && "$(state_get wp_config_copied)" == "1" ]]; then
+        rm -f "$WORKTREE_ROOT/wp-config.php"
+        success "wp-config.php removed"
+    elif [[ $has_state -eq 0 ]]; then
+        warn "wp-config.php left in place (no state file — remove manually if needed)"
+    fi
+
+    # 7. Clean up state file ─────────────────────────────────────────────────────
+    rm -f "$STATE_FILE"
+    success "State file cleaned up"
+
+    echo ""
+    success "Unmount complete. Canonical site restored at https://$SITE_NAME.test/"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# STATUS
+# ──────────────────────────────────────────────────────────────────────────────
+
+cmd_status() {
+    echo ""
+    echo -e "${BOLD}Worktree Link Status${RESET}"
+    echo "  Worktree : $WORKTREE_ROOT"
+    echo "  Site name: $SITE_NAME"
+    echo ""
+
+    local herd_link="$HOME/Library/Application Support/Herd/config/valet/Sites/$SITE_NAME"
+
+    echo -e "${BOLD}Herd:${RESET}"
+    if [[ -L "$herd_link" ]]; then
+        local target
+        target="$(readlink "$herd_link")"
+        if [[ "$target" == "$WORKTREE_ROOT" ]]; then
+            echo -e "  ${GREEN}✓ herd link points HERE (this worktree)${RESET}"
+        else
+            echo -e "  ${YELLOW}⚠ herd link points to: $target${RESET}"
+        fi
+    else
+        echo -e "  ${RED}✗ no herd link found${RESET}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}WordPress core:${RESET}"
+    if [[ -f "$WP_CORE_MARKER" ]]; then
+        local _wpcv
+        _wpcv="$(wp_clean core version --path="$WORKTREE_ROOT")"
+        echo -e "  ${GREEN}✓ present ($_wpcv)${RESET}"
+    else
+        echo -e "  ${RED}✗ not installed${RESET}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}wp-config.php:${RESET}"
+    if [[ -f "$WORKTREE_ROOT/wp-config.php" ]]; then
+        echo -e "  ${GREEN}✓ present${RESET}"
+    else
+        echo -e "  ${RED}✗ missing${RESET}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}Eightshift packages:${RESET}"
+    for pkg in $(find_eightshift_packages); do
+        local pkg_name
+        pkg_name="$(basename "$pkg")"
+        local pkg_type="package"
+        [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+        [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
+
+        local vendor_ok="-" node_ok="-" build_ok="-"
+        [[ -f "$pkg/vendor/autoload.php" ]] && vendor_ok="${GREEN}✓${RESET}" || vendor_ok="${RED}✗${RESET}"
+        [[ -d "$pkg/node_modules" ]] && node_ok="${GREEN}✓${RESET}" || node_ok="${RED}✗${RESET}"
+        [[ -f "$pkg/public/manifest.json" ]] && build_ok="${GREEN}✓${RESET}" || build_ok="${RED}✗${RESET}"
+
+        echo -e "  [$pkg_type] $pkg_name  vendor:$vendor_ok  node_modules:$node_ok  build:$build_ok"
+    done
+
+    echo ""
+    echo -e "${BOLD}Plugin symlinks:${RESET}"
+    local plugin_count=0
+    if [[ -d "$WP_CONTENT/plugins" ]]; then
+        for entry in "$WP_CONTENT/plugins"/*; do
+            [[ -L "$entry" ]] && plugin_count=$((plugin_count + 1))
+        done
+    fi
+    echo "  $plugin_count symlinked"
+
+    echo ""
+    echo -e "${BOLD}State file:${RESET}"
+    if [[ -f "$STATE_FILE" ]]; then
+        echo -e "  ${GREEN}✓ present${RESET} ($STATE_FILE)"
+    else
+        echo -e "  ${YELLOW}⚠ not found (was mount ever run?)${RESET}"
+    fi
+    echo ""
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ──────────────────────────────────────────────────────────────────────────────
+
+COMMAND="${1:-help}"
+
+case "$COMMAND" in
+    mount)   cmd_mount ;;
+    unmount) cmd_unmount ;;
+    status)  cmd_status ;;
+    *)
+        error "Unknown command: $COMMAND. Run 'wt-link --help' for usage."
+        ;;
+esac

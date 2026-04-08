@@ -1,0 +1,116 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in script
+        run: |
+          sed -i "s/^WT_LINK_VERSION=.*/WT_LINK_VERSION=\"${{ steps.version.outputs.version }}\"/" bin/wt-link
+
+      - name: Create release archive
+        run: |
+          cp bin/wt-link wt-link
+          sha256sum wt-link > wt-link.sha256
+
+      - name: Compute SHA256
+        id: sha256
+        run: echo "hash=$(sha256sum wt-link | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            ## Install
+
+            ```bash
+            brew tap piqusy/tap
+            brew install piqusy/tap/wt-link
+            ```
+
+            Or via curl:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
+            ```
+
+            Or install a specific version:
+            ```bash
+            WT_LINK_VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
+            ```
+
+            ### Manual download
+
+            Download `wt-link` below, make it executable, and place it on your `$PATH`.
+
+            Verify checksum: `sha256sum -c wt-link.sha256`
+          files: |
+            wt-link
+            wt-link.sha256
+          generate_release_notes: true
+
+  update-homebrew-tap:
+    name: Update Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: piqusy/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release binary
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --repo piqusy/wt-link \
+            --pattern "wt-link" \
+            --output wt-link
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Compute SHA256
+        id: sha256
+        run: echo "hash=$(sha256sum wt-link | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Update formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA256="${{ steps.sha256.outputs.hash }}"
+          FORMULA="homebrew-tap/Formula/wt-link.rb"
+
+          sed -i "s|releases/download/v.*/wt-link\"|releases/download/v${VERSION}/wt-link\"|" "$FORMULA"
+          sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$FORMULA"
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
+
+      - name: Commit and push
+        run: |
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/wt-link.rb
+          git diff --cached --quiet || git commit -m "update(wt-link): bump to v${{ steps.version.outputs.version }}"
+          git push
