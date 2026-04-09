@@ -238,7 +238,7 @@ find_untracked_plugins() {
 
 detect_package_manager() {
     local dir="$1"
-    if [[ -f "$dir/bun.lockb" ]]; then
+    if [[ -f "$dir/bun.lockb" ]] || [[ -f "$dir/bun.lock" ]]; then
         echo "bun"
     elif [[ -f "$dir/yarn.lock" ]]; then
         echo "yarn"
@@ -254,10 +254,10 @@ detect_package_manager() {
             yarn@*) echo "yarn" ;;
             pnpm@*) echo "pnpm" ;;
             npm@*)  echo "npm"  ;;
-            *)      echo "npm"  ;;
+            *)      echo "bun"  ;;
         esac
     else
-        echo "npm"
+        echo "bun"
     fi
 }
 

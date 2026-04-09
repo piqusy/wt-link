@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.3] — 2026-04-10
+
+### Fixed
+- **Package manager detection now recognises `bun.lock`** — Bun's text-format lockfile (`bun.lock`) is now detected alongside the legacy binary `bun.lockb`. Projects without either lockfile now default to `bun` instead of `npm`.
+
 ## [1.3.2] — 2026-04-10
 
 ### Fixed
