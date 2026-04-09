@@ -9,7 +9,7 @@
 #     • Downloads WordPress core (version from setup.json)
 #     • Copies wp-config.php from the canonical site
 #     • Symlinks git-untracked plugins and uploads from the canonical site
-#     • Symlinks node_modules from the canonical site (avoids version skew)
+#     • Runs `bun install` in each Eightshift package (fresh, independent deps)
 #     • Runs `composer install` in each Eightshift package
 #     • Builds JS/CSS assets (`bun run build`)
 #     • Runs `herd link <site-name>` to point the local domain here
@@ -35,7 +35,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.0.0"
+WT_LINK_VERSION="1.1.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -350,26 +350,14 @@ cmd_mount() {
             success "  composer: done"
         fi
 
-        # node_modules — symlink from canonical if available, otherwise bun install
+        # node_modules — always install fresh so the worktree gets its own deps
         local node_modules_dest="$pkg/node_modules"
-        local canonical_pkg_node_modules=""
 
-        # Try to find matching package in canonical site
-        if [[ "$pkg_type" == "theme" ]]; then
-            canonical_pkg_node_modules="$CANONICAL_WP_CONTENT/themes/$pkg_name/node_modules"
-        elif [[ "$pkg_type" == "plugin" ]]; then
-            canonical_pkg_node_modules="$CANONICAL_WP_CONTENT/plugins/$pkg_name/node_modules"
-        fi
-
-        if [[ -L "$node_modules_dest" ]]; then
-            success "  node_modules: already symlinked"
-        elif [[ -d "$node_modules_dest" ]]; then
+        if [[ -d "$node_modules_dest" && ! -L "$node_modules_dest" ]]; then
             success "  node_modules: already installed"
-        elif [[ -n "$canonical_pkg_node_modules" && -d "$canonical_pkg_node_modules" ]]; then
-            ln -s "$canonical_pkg_node_modules" "$node_modules_dest"
-            state_set "node_modules_symlinked_$pkg_name" "1"
-            success "  node_modules: symlinked from canonical (avoids version skew)"
         else
+            # Remove stale symlink if present (left over from an older mount)
+            [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
             step "  Running bun install..."
             bun install --cwd="$pkg" 2>/dev/null | tail -2 || warn "  bun install had warnings"
             success "  node_modules: installed via bun"
