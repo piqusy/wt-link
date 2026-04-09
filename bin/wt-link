@@ -9,9 +9,9 @@
 #     • Downloads WordPress core (version from setup.json)
 #     • Copies wp-config.php from the canonical site
 #     • Symlinks git-untracked plugins and uploads from the canonical site
-#     • Runs `bun install` in each Eightshift package (fresh, independent deps)
-#     • Runs `composer install` in each Eightshift package
-#     • Builds JS/CSS assets (`bun run build`)
+#     • Installs JS deps in each Eightshift package via auto-detected PM
+#     • Symlinks composer vendor/ from canonical (falls back to composer install)
+#     • Builds JS/CSS assets via the package's package manager
 #     • Runs `herd link <site-name>` to point the local domain here
 #
 #   On `unmount` every symlink is removed, WP core files are deleted, and
@@ -24,7 +24,8 @@
 #   wt-link mount --cwd PATH   Mount a specific worktree directory
 #
 # REQUIREMENTS
-#   wp-cli, herd, bun, composer, jq
+#   wp-cli, herd, composer, jq
+#   Node package manager: bun, npm, yarn, or pnpm (auto-detected per package)
 #
 # CONFIGURATION (optional — auto-detected from setup.json when omitted)
 #   CANONICAL_SITE   Absolute path to the canonical (main) site.
@@ -35,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.2.0"
+WT_LINK_VERSION="1.3.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -56,6 +57,10 @@ step()    { echo -e "  ${BOLD}$*${RESET}"; }
 
 require_cmd() {
     command -v "$1" &>/dev/null || error "Required command not found: $1"
+}
+
+require_pm() {
+    command -v "$1" &>/dev/null || error "Package manager '$1' not found. Install it or ensure it is on PATH."
 }
 
 # wp-cli outputs deprecation notices to stdout (not stderr) starting with a
@@ -208,6 +213,55 @@ find_untracked_plugins() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Package manager detection — lockfile takes priority over package.json field
+# ──────────────────────────────────────────────────────────────────────────────
+
+detect_package_manager() {
+    local dir="$1"
+    if [[ -f "$dir/bun.lockb" ]]; then
+        echo "bun"
+    elif [[ -f "$dir/yarn.lock" ]]; then
+        echo "yarn"
+    elif [[ -f "$dir/pnpm-lock.yaml" ]]; then
+        echo "pnpm"
+    elif [[ -f "$dir/package-lock.json" ]]; then
+        echo "npm"
+    elif [[ -f "$dir/package.json" ]]; then
+        local pm_field
+        pm_field="$(jq -r '.packageManager // empty' "$dir/package.json" 2>/dev/null || true)"
+        case "$pm_field" in
+            bun@*)  echo "bun"  ;;
+            yarn@*) echo "yarn" ;;
+            pnpm@*) echo "pnpm" ;;
+            npm@*)  echo "npm"  ;;
+            *)      echo "npm"  ;;
+        esac
+    else
+        echo "npm"
+    fi
+}
+
+run_pm_install() {
+    local pm="$1" dir="$2"
+    case "$pm" in
+        bun)  bun install --cwd="$dir" ;;
+        yarn) yarn install --cwd "$dir" ;;
+        pnpm) pnpm install --dir "$dir" ;;
+        npm)  npm install --prefix "$dir" ;;
+    esac
+}
+
+run_pm_build() {
+    local pm="$1" dir="$2"
+    case "$pm" in
+        bun)  (cd "$dir" && bun run build) ;;
+        yarn) (cd "$dir" && yarn run build) ;;
+        pnpm) (cd "$dir" && pnpm run build) ;;
+        npm)  (cd "$dir" && npm run build) ;;
+    esac
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # WP core marker file (present when WP core is installed)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -230,7 +284,6 @@ cmd_mount() {
     require_cmd wp
     require_cmd herd
     require_cmd composer
-    require_cmd bun
 
     log "Mounting worktree as '$SITE_NAME' local site"
     echo "  Worktree : $WORKTREE_ROOT"
@@ -377,11 +430,14 @@ cmd_mount() {
         fi
 
         # node_modules — always rebuild so the worktree gets its own fresh deps
+        local pm
+        pm="$(detect_package_manager "$pkg")"
+        require_pm "$pm"
         local node_modules_dest="$pkg/node_modules"
         [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
-        step "  Running bun install..."
-        bun install --cwd="$pkg" 2>/dev/null | tail -2 || warn "  bun install had warnings"
-        success "  node_modules: installed via bun"
+        step "  Running $pm install..."
+        run_pm_install "$pm" "$pkg" 2>/dev/null | tail -2 || warn "  $pm install had warnings"
+        success "  node_modules: installed via $pm"
 
         # build
         local public_manifest="$pkg/public/manifest.json"
@@ -402,8 +458,8 @@ cmd_mount() {
                 state_set "public_copied_$pkg_name" "1"
                 success "  build: copied from canonical (canonical has up-to-date build)"
             else
-                step "  Running bun run build..."
-                (cd "$pkg" && bun run build 2>&1 | tail -5) || warn "  build had errors — check manually"
+                step "  Running $pm run build..."
+                run_pm_build "$pm" "$pkg" 2>&1 | tail -5 || warn "  build had errors — check manually"
                 success "  build: done"
             fi
         fi
@@ -607,8 +663,10 @@ cmd_status() {
         [[ -f "$pkg/vendor/autoload.php" ]] && vendor_ok="${GREEN}✓${RESET}" || vendor_ok="${RED}✗${RESET}"
         [[ -d "$pkg/node_modules" ]] && node_ok="${GREEN}✓${RESET}" || node_ok="${RED}✗${RESET}"
         [[ -f "$pkg/public/manifest.json" ]] && build_ok="${GREEN}✓${RESET}" || build_ok="${RED}✗${RESET}"
+        local pm_detected
+        pm_detected="$(detect_package_manager "$pkg")"
 
-        echo -e "  [$pkg_type] $pkg_name  vendor:$vendor_ok  node_modules:$node_ok  build:$build_ok"
+        echo -e "  [$pkg_type] $pkg_name  pm:$pm_detected  vendor:$vendor_ok  node_modules:$node_ok  build:$build_ok"
     done
 
     echo ""
