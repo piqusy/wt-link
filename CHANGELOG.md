@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.3.1] — 2026-04-09
+
+### Fixed
+- **Subdirectory invocation** — `mount`, `unmount`, and `status` now traverse up from the current directory to find `setup.json`, stopping at the git repo root. Previously, the commands only worked when invoked from the exact worktree root.
+
 ## [1.3.0] — 2026-04-09
 
 ### Changed

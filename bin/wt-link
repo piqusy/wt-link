@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.3.0"
+WT_LINK_VERSION="1.3.1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -131,21 +131,41 @@ set -- "${FILTERED_ARGS[@]+"${FILTERED_ARGS[@]}"}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Resolution — determine project root from CWD or --cwd flag
+# Traverses up to the git repo root ceiling to find setup.json
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Walk up from $1 until setup.json is found, but stop at the git repo root.
+# Echoes the directory containing setup.json and returns 0 on success.
+find_project_root() {
+    local dir="$1"
+    local ceiling
+    ceiling="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null || echo "/")"
+    while true; do
+        if [[ -f "$dir/setup.json" ]]; then
+            echo "$dir"
+            return 0
+        fi
+        # Do not go above the git repo root
+        if [[ "$dir" == "$ceiling" || "$dir" == "/" ]]; then
+            return 1
+        fi
+        dir="$(dirname "$dir")"
+    done
+}
+
 if [[ -n "$EXPLICIT_CWD" ]]; then
-    WORKTREE_ROOT="$(cd "$EXPLICIT_CWD" && pwd)"
+    START_DIR="$(cd "$EXPLICIT_CWD" && pwd)"
 else
-    WORKTREE_ROOT="$(pwd)"
+    START_DIR="$(pwd)"
+fi
+
+# Gracefully skip non-WP projects (no error — safe to call unconditionally)
+if ! WORKTREE_ROOT="$(find_project_root "$START_DIR")"; then
+    warn "Not a WordPress project (setup.json not found in $START_DIR or any parent directory up to git root) — skipping"
+    exit 0
 fi
 
 SETUP_JSON="$WORKTREE_ROOT/setup.json"
-
-# Gracefully skip non-WP projects (no error — safe to call unconditionally)
-if [[ ! -f "$SETUP_JSON" ]]; then
-    warn "Not a WordPress project (setup.json not found at $WORKTREE_ROOT) — skipping"
-    exit 0
-fi
 
 # Extract local URL from setup.json (e.g. "https://infobip.test/")
 LOCAL_URL="$(jq -r '.urls.local // empty' "$SETUP_JSON" 2>/dev/null || true)"
