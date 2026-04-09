@@ -35,7 +35,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.1.0"
+WT_LINK_VERSION="1.2.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -341,27 +341,47 @@ cmd_mount() {
 
         log "Setting up $pkg_type: $pkg_name"
 
-        # composer install
-        if [[ -f "$pkg/vendor/autoload.php" ]]; then
-            success "  composer: already installed"
-        else
-            step "  Running composer install..."
-            composer install --no-interaction --working-dir="$pkg" 2>/dev/null | tail -2 || warn "  composer install had warnings"
-            success "  composer: done"
+        # Resolve canonical package path for vendor symlinking
+        local canonical_pkg=""
+        if [[ "$pkg_type" == "theme" ]]; then
+            canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
+        elif [[ "$pkg_type" == "plugin" ]]; then
+            canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
         fi
 
-        # node_modules — always install fresh so the worktree gets its own deps
+        # composer deps — symlink vendor/ and vendor_prefixed/ from canonical
+        local composer_ok=0
+        for vendor_dir in vendor vendor_prefixed; do
+            local dest="$pkg/$vendor_dir"
+            local src="$canonical_pkg/$vendor_dir"
+
+            if [[ -L "$dest" ]]; then
+                [[ "$vendor_dir" == "vendor" ]] && { success "  vendor/: already symlinked"; composer_ok=1; }
+            elif [[ -d "$src" ]]; then
+                [[ -d "$dest" && ! -L "$dest" ]] && rm -rf "$dest"
+                ln -s "$src" "$dest"
+                success "  $vendor_dir/: symlinked from canonical"
+                [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
+            fi
+            # vendor_prefixed/ is optional — no warning if absent in canonical
+        done
+
+        if [[ $composer_ok -eq 0 ]]; then
+            if [[ -f "$pkg/vendor/autoload.php" ]]; then
+                success "  composer: vendor/ already installed locally"
+            else
+                step "  Running composer install (no canonical vendor/ found)..."
+                composer install --no-interaction --working-dir="$pkg" 2>/dev/null | tail -2 || warn "  composer install had warnings"
+                success "  composer: done"
+            fi
+        fi
+
+        # node_modules — always rebuild so the worktree gets its own fresh deps
         local node_modules_dest="$pkg/node_modules"
-
-        if [[ -d "$node_modules_dest" && ! -L "$node_modules_dest" ]]; then
-            success "  node_modules: already installed"
-        else
-            # Remove stale symlink if present (left over from an older mount)
-            [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
-            step "  Running bun install..."
-            bun install --cwd="$pkg" 2>/dev/null | tail -2 || warn "  bun install had warnings"
-            success "  node_modules: installed via bun"
-        fi
+        [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
+        step "  Running bun install..."
+        bun install --cwd="$pkg" 2>/dev/null | tail -2 || warn "  bun install had warnings"
+        success "  node_modules: installed via bun"
 
         # build
         local public_manifest="$pkg/public/manifest.json"
@@ -476,12 +496,21 @@ cmd_unmount() {
     fi
     success "Removed $removed_plugins plugin symlinks"
 
-    # 4. Remove node_modules symlinks ────────────────────────────────────────────
+    # 4. Remove vendor/ and node_modules symlinks ────────────────────────────────
     for pkg in $(find_eightshift_packages); do
+        local pkg_basename
+        pkg_basename="$(basename "$pkg")"
+        for vendor_dir in vendor vendor_prefixed; do
+            local vendor_dest="$pkg/$vendor_dir"
+            if [[ -L "$vendor_dest" ]]; then
+                rm "$vendor_dest"
+                success "  $vendor_dir/ symlink removed: $pkg_basename"
+            fi
+        done
         local node_modules_dest="$pkg/node_modules"
         if [[ -L "$node_modules_dest" ]]; then
             rm "$node_modules_dest"
-            success "  node_modules symlink removed: $(basename "$pkg")"
+            success "  node_modules symlink removed: $pkg_basename"
         fi
     done
 
