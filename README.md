@@ -42,8 +42,8 @@ mv wt-link ~/.local/bin/wt-link
 |------|---------|
 | [WP-CLI](https://wp-cli.org) (`wp`) | WordPress core download |
 | [Laravel Herd](https://herd.laravel.com) (`herd`) | Local domain management |
-| [Composer](https://getcomposer.org) | PHP dependency install |
-| [Bun](https://bun.sh) | JS dependency install and asset build |
+| [Composer](https://getcomposer.org) | PHP dependency install (fallback only) |
+| `bun` / `npm` / `yarn` / `pnpm` | JS dependency install and asset build (auto-detected) |
 | `jq` | Parse `setup.json` |
 | `rsync` | File sync (macOS built-in) |
 
@@ -101,9 +101,9 @@ alias wls 'wt-link status'
 3. **Plugins** — Symlinks git-untracked plugins from the canonical site
 4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
 5. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
-   - Runs `composer install`
-   - Symlinks `node_modules` from the canonical (or runs `bun install`)
-   - Runs `bun run build` (or copies pre-built `public/` from canonical)
+   - Symlinks `vendor/` and `vendor_prefixed/` from the canonical site (falls back to `composer install` if canonical has none)
+   - Runs `<pm> install` — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
+   - Runs `<pm> run build` (or copies pre-built `public/` from canonical)
 6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`
 
 A `.worktree-link-state` file tracks everything created so `unmount` can reverse it precisely.
