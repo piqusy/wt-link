@@ -422,21 +422,22 @@ cmd_mount() {
             canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
         fi
 
-        # composer deps — symlink vendor/ and vendor_prefixed/ from canonical
+        # composer deps — symlink vendor/ and vendor-prefixed/ from canonical
         local composer_ok=0
-        for vendor_dir in vendor vendor_prefixed; do
+        for vendor_dir in vendor vendor-prefixed; do
             local dest="$pkg/$vendor_dir"
             local src="$canonical_pkg/$vendor_dir"
 
             if [[ -L "$dest" ]]; then
                 [[ "$vendor_dir" == "vendor" ]] && { success "  vendor/: already symlinked"; composer_ok=1; }
+                [[ "$vendor_dir" == "vendor-prefixed" ]] && success "  vendor-prefixed/: already symlinked"
             elif [[ -d "$src" ]]; then
                 [[ -d "$dest" && ! -L "$dest" ]] && rm -rf "$dest"
                 ln -s "$src" "$dest"
                 success "  $vendor_dir/: symlinked from canonical"
                 [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
             fi
-            # vendor_prefixed/ is optional — no warning if absent in canonical
+            # vendor-prefixed/ is optional — no warning if absent in canonical
         done
 
         if [[ $composer_ok -eq 0 ]]; then
@@ -576,7 +577,7 @@ cmd_unmount() {
     for pkg in $(find_eightshift_packages); do
         local pkg_basename
         pkg_basename="$(basename "$pkg")"
-        for vendor_dir in vendor vendor_prefixed; do
+        for vendor_dir in vendor vendor-prefixed; do
             local vendor_dest="$pkg/$vendor_dir"
             if [[ -L "$vendor_dest" ]]; then
                 rm "$vendor_dest"
