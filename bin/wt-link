@@ -326,6 +326,43 @@ registry_clear() {
     rm -f "$REGISTRY_FILE"
 }
 
+# run_with_spinner <label> <command> [args...]
+#   Runs <command> in the background while showing a braille spinner.
+#   stdout/stderr from the command are captured; on failure the last 5 lines
+#   are printed to help diagnose the problem.
+run_with_spinner() {
+    local label="$1"; shift
+    local spinner='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    local tmp_out
+    tmp_out="$(mktemp)"
+
+    printf "  %s %s" "${spinner:0:1}" "$label"
+
+    "$@" >"$tmp_out" 2>&1 &
+    local pid=$!
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local spin_char="${spinner:$(( i % ${#spinner} )):1}"
+        printf "\r  %s %s" "$spin_char" "$label"
+        sleep 0.1
+        (( i++ ))
+    done
+
+    wait "$pid"
+    local exit_code=$?
+
+    printf "\r\033[K"
+
+    if [[ $exit_code -ne 0 ]]; then
+        warn "$label (exit $exit_code)"
+        tail -5 "$tmp_out" | while IFS= read -r line; do echo "    $line"; done
+    fi
+
+    rm -f "$tmp_out"
+    return $exit_code
+}
+
 # wait_for_herd <domain> <timeout_secs>
 #   Polls http:// and https:// for the domain until any HTTP response is received
 #   or the timeout expires. Displays a spinner while waiting.
