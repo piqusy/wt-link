@@ -326,6 +326,40 @@ registry_clear() {
     rm -f "$REGISTRY_FILE"
 }
 
+# wait_for_herd <domain> <timeout_secs>
+#   Polls http:// and https:// for the domain until any HTTP response is received
+#   or the timeout expires. Displays a spinner while waiting.
+wait_for_herd() {
+    local domain="$1"
+    local timeout_secs="${2:-10}"
+    local spinner='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local elapsed=0
+    local interval=1
+
+    # Give Herd a moment to update its config before we start polling
+    sleep 0.5
+
+    while (( elapsed < timeout_secs )); do
+        local code_http code_https
+        code_http="$(curl -sI --max-time 2 -o /dev/null -w '%{http_code}' "http://$domain/" 2>/dev/null || echo "000")"
+        code_https="$(curl -sI --max-time 2 -o /dev/null -w '%{http_code}' "https://$domain/" 2>/dev/null || echo "000")"
+
+        if [[ "$code_http" != "000" || "$code_https" != "000" ]]; then
+            printf "\r\033[K"
+            success "$domain is live"
+            return 0
+        fi
+
+        local spin_char="${spinner:$(( elapsed % ${#spinner} )):1}"
+        printf "\r  %s Waiting for %s to respond… (%ds)" "$spin_char" "$domain" "$elapsed"
+        sleep "$interval"
+        (( elapsed += interval ))
+    done
+
+    printf "\r\033[K"
+    warn "$domain did not respond within ${timeout_secs}s — it may still be starting up"
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MOUNT
 # ──────────────────────────────────────────────────────────────────────────────
@@ -557,6 +591,9 @@ cmd_mount() {
     registry_set "active" "$WORKTREE_ROOT"
     state_set "herd_linked" "1"
 
+    # Wait for Herd to process the link before declaring success
+    wait_for_herd "$SITE_NAME.test" 10
+
     # 7. DB upgrade check ────────────────────────────────────────────────────────
     local db_version
     db_version="$(wp_clean core version --path="$WORKTREE_ROOT" || true)"
@@ -601,20 +638,27 @@ cmd_unmount() {
         echo -e "  Active owner: $reg_active"
     else
         # This worktree owns the domain (or there's no registry) — restore canonical
-        local canonical_target
+        local canonical_target restored_domain=""
         canonical_target="$(registry_get canonical)"
         # Fallback chain: registry canonical → CANONICAL_SITE env → bare unlink
         if [[ -n "$canonical_target" && -d "$canonical_target" ]]; then
             ln -sfn "$canonical_target" "$herd_link"
             success "herd link restored to canonical: $canonical_target"
+            restored_domain="$SITE_NAME.test"
         elif [[ -d "$CANONICAL_SITE" ]]; then
             ln -sfn "$CANONICAL_SITE" "$herd_link"
             success "herd link restored to canonical: $CANONICAL_SITE"
+            restored_domain="$SITE_NAME.test"
         else
             herd unlink "$SITE_NAME" 2>/dev/null || true
             success "herd unlink done"
         fi
         registry_clear_active
+
+        # Wait for Herd to process the restored link
+        if [[ -n "$restored_domain" ]]; then
+            wait_for_herd "$restored_domain" 10
+        fi
     fi
 
 
