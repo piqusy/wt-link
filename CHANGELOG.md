@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.6.2] — 2026-04-10
+
+### Fixed
+- `herd link` in `mount` now runs with an explicit `cd` into the worktree root before calling `herd link`, matching the pattern used in `unmount`. Previously, `herd link` was called from the caller's `pwd`, which caused the Herd symlink to point to the wrong directory when the shell's working directory differed from the worktree root.
+- Replaced `-V` short flag for `--version` with `-v` for consistency.
+
 ## [1.6.1] — 2026-04-10
 
 ### Fixed

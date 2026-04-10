@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.6.1"
+WT_LINK_VERSION="1.6.2"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTPUT
@@ -106,7 +106,7 @@ case "${1:-help}" in
         echo "  wt-link status"
         exit 0
         ;;
-    --version|-V)
+    --version|-v)
         echo "wt-link $WT_LINK_VERSION"
         exit 0
         ;;
@@ -464,12 +464,12 @@ cmd_mount() {
             success "herd link already points to this worktree"
         else
             run_with_spinner "Linking $SITE_NAME.test via Herd…" \
-                herd link "$SITE_NAME" || error "herd link failed — cannot mount without a working domain"
+                bash -c "cd '$WORKTREE_ROOT' && herd link '$SITE_NAME'" || error "herd link failed — cannot mount without a working domain"
             success "herd link updated (was: $current_target)"
         fi
     else
         run_with_spinner "Linking $SITE_NAME.test via Herd…" \
-            herd link "$SITE_NAME" || error "herd link failed — cannot mount without a working domain"
+            bash -c "cd '$WORKTREE_ROOT' && herd link '$SITE_NAME'" || error "herd link failed — cannot mount without a working domain"
         success "herd link created"
     fi
 
