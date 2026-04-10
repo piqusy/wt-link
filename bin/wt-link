@@ -613,8 +613,8 @@ cmd_mount() {
         require_pm "$pm"
         local node_modules_dest="$pkg/node_modules"
         [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
-        step "  Running $pm install..."
-        run_pm_install "$pm" "$pkg" 2>/dev/null | tail -2 || warn "  $pm install had warnings"
+        run_with_spinner "  $pm install…" \
+            run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
         success "  node_modules: installed via $pm"
 
         # build
