@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0] — 2026-04-10
+
+### Added
+- **Spinners for long-running steps** — WP core download/extract, `composer install`, package manager install, and package manager build now show a braille spinner (`⠋⠙⠹…`) while running in the background. On failure, the last 5 lines of output are printed to aid debugging.
+
+### Changed
+- `wait_for_herd` in unmount moved to after all cleanup steps, mirroring mount's pattern — Herd's nginx config reload now happens in the background during teardown rather than blocking it.
+
 ## [1.5.0] — 2026-04-10
 
 ### Added
