@@ -599,20 +599,31 @@ cmd_unmount() {
 
     # 1. Herd unlink ─────────────────────────────────────────────────────────────
     local herd_link="$HOME/Library/Application Support/Herd/config/valet/Sites/$SITE_NAME"
-    local previous_target=""
-    [[ $has_state -eq 1 ]] && previous_target="$(state_get herd_previous_target)"
+    local reg_active
+    reg_active="$(registry_get active)"
 
-    if [[ -n "$previous_target" ]]; then
-        ln -sfn "$previous_target" "$herd_link"
-        success "herd link restored to: $previous_target"
-    elif [[ -d "$CANONICAL_SITE" ]]; then
-        # Fallback: no saved target (e.g. no state file) but canonical exists — re-link it
-        ln -sfn "$CANONICAL_SITE" "$herd_link"
-        success "herd link restored to canonical: $CANONICAL_SITE"
+    if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
+        # Another worktree currently owns the domain — skip Herd restore, only clean local files
+        warn "Domain $SITE_NAME.test is owned by another worktree — skipping Herd restore"
+        echo -e "  Active owner: $reg_active"
     else
-        herd unlink "$SITE_NAME" 2>/dev/null || true
-        success "herd unlink done"
+        # This worktree owns the domain (or there's no registry) — restore canonical
+        local canonical_target
+        canonical_target="$(registry_get canonical)"
+        # Fallback chain: registry canonical → CANONICAL_SITE env → bare unlink
+        if [[ -n "$canonical_target" && -d "$canonical_target" ]]; then
+            ln -sfn "$canonical_target" "$herd_link"
+            success "herd link restored to canonical: $canonical_target"
+        elif [[ -d "$CANONICAL_SITE" ]]; then
+            ln -sfn "$CANONICAL_SITE" "$herd_link"
+            success "herd link restored to canonical: $CANONICAL_SITE"
+        else
+            herd unlink "$SITE_NAME" 2>/dev/null || true
+            success "herd unlink done"
+        fi
+        registry_clear_active
     fi
+
 
     # 2. Remove uploads symlink ──────────────────────────────────────────────────
     local uploads_dest="$WP_CONTENT/uploads"
