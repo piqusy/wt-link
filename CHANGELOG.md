@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.4] — 2026-04-10
+
+### Fixed
+- **Herd link restore on fresh mount** — when no pre-existing Herd link existed at mount time, `unmount` would run `herd unlink` leaving `site.test` unresolved. Mount now records the canonical site as the restore target; unmount falls back to re-linking canonical when no saved target is present.
+- **Re-mount clobbers restore target** — mounting the same worktree twice would overwrite `herd_previous_target` with the worktree path itself, causing unmount to restore to the wrong location. The target is now written only once (first mount wins).
+- **`node_modules/` left behind after unmount** — `pm install` creates a real directory, not a symlink. Unmount now removes it unconditionally with `rm -rf`.
+- **`public/` not cleaned on unmount** — mount now always runs `pm build` and tracks `public_built_<pkg>` in state; unmount removes the built `public/` directory when that key is present. The previous rsync copy-from-canonical fallback is removed.
+
 ## [1.3.3] — 2026-04-10
 
 ### Fixed

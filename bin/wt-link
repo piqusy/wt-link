@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.3.2"
+WT_LINK_VERSION="1.3.4"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Helpers
@@ -465,24 +465,10 @@ cmd_mount() {
         if [[ -f "$public_manifest" ]]; then
             success "  build: already built"
         else
-            # Check canonical for a pre-built public/ (useful for plugins not modified in this branch)
-            local canonical_public=""
-            if [[ "$pkg_type" == "theme" ]]; then
-                canonical_public="$CANONICAL_WP_CONTENT/themes/$pkg_name/public"
-            elif [[ "$pkg_type" == "plugin" ]]; then
-                canonical_public="$CANONICAL_WP_CONTENT/plugins/$pkg_name/public"
-            fi
-
-            if [[ -f "$canonical_public/manifest.json" ]]; then
-                step "  Copying pre-built public/ from canonical site..."
-                rsync -a "$canonical_public/" "$pkg/public/"
-                state_set "public_copied_$pkg_name" "1"
-                success "  build: copied from canonical (canonical has up-to-date build)"
-            else
-                step "  Running $pm run build..."
-                run_pm_build "$pm" "$pkg" 2>&1 | tail -5 || warn "  build had errors — check manually"
-                success "  build: done"
-            fi
+            step "  Running $pm run build..."
+            run_pm_build "$pm" "$pkg" 2>&1 | tail -5 || warn "  build had errors — check manually"
+            state_set "public_built_$pkg_name" "1"
+            success "  build: done"
         fi
     done
 
@@ -496,13 +482,22 @@ cmd_mount() {
         if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
             success "herd link already points to this worktree"
         else
-            # Save where it pointed so unmount can restore it
-            state_set "herd_previous_target" "$current_target"
+            # Save where it pointed so unmount can restore it — but only if we
+            # haven't already saved a target (re-mount guard: don't overwrite the
+            # original restore target with the worktree path itself).
+            local existing_previous
+            existing_previous="$(state_get herd_previous_target 2>/dev/null || true)"
+            if [[ -z "$existing_previous" ]]; then
+                state_set "herd_previous_target" "$current_target"
+            fi
             herd link "$SITE_NAME" 2>/dev/null
             state_set "herd_linked" "1"
             success "herd link updated (was: $current_target)"
         fi
     else
+        # No pre-existing link — record canonical as the restore target so unmount
+        # can re-link it instead of leaving the domain unresolved.
+        state_set "herd_previous_target" "$CANONICAL_SITE"
         herd link "$SITE_NAME" 2>/dev/null
         state_set "herd_linked" "1"
         success "herd link created"
@@ -549,6 +544,10 @@ cmd_unmount() {
     if [[ -n "$previous_target" ]]; then
         ln -sfn "$previous_target" "$herd_link"
         success "herd link restored to: $previous_target"
+    elif [[ -d "$CANONICAL_SITE" ]]; then
+        # Fallback: no saved target (e.g. no state file) but canonical exists — re-link it
+        ln -sfn "$CANONICAL_SITE" "$herd_link"
+        success "herd link restored to canonical: $CANONICAL_SITE"
     else
         herd unlink "$SITE_NAME" 2>/dev/null || true
         success "herd unlink done"
@@ -573,7 +572,7 @@ cmd_unmount() {
     fi
     success "Removed $removed_plugins plugin symlinks"
 
-    # 4. Remove vendor/ and node_modules symlinks ────────────────────────────────
+    # 4. Remove vendor/, node_modules, and built public/ from Eightshift packages ─
     for pkg in $(find_eightshift_packages); do
         local pkg_basename
         pkg_basename="$(basename "$pkg")"
@@ -585,9 +584,17 @@ cmd_unmount() {
             fi
         done
         local node_modules_dest="$pkg/node_modules"
-        if [[ -L "$node_modules_dest" ]]; then
-            rm "$node_modules_dest"
-            success "  node_modules symlink removed: $pkg_basename"
+        if [[ -L "$node_modules_dest" || -d "$node_modules_dest" ]]; then
+            rm -rf "$node_modules_dest"
+            success "  node_modules removed: $pkg_basename"
+        fi
+        # Remove public/ if mount built it (state key present)
+        if [[ $has_state -eq 1 && "$(state_get "public_built_$pkg_basename")" == "1" ]]; then
+            local public_dest="$pkg/public"
+            if [[ -d "$public_dest" ]]; then
+                rm -rf "$public_dest"
+                success "  public/ removed: $pkg_basename"
+            fi
         fi
     done
 
