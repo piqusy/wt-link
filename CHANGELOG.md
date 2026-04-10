@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1] — 2026-04-10
+
+### Fixed
+- Show spinner during `herd link` on mount for visual feedback while nginx reloads
+- Abort mount with hard error if `herd link` fails instead of silently continuing
+- Replace manual `ln -sfn` symlink on unmount with `herd link` to trigger Herd nginx reload and fix 404s after unmount
+- Warn instead of silently swallowing errors from `herd unlink` fallback on unmount
+
 ## [1.6.0] — 2026-04-10
 
 ### Added

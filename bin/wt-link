@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.6.0"
+WT_LINK_VERSION="1.6.1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTPUT
@@ -463,11 +463,13 @@ cmd_mount() {
         if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
             success "herd link already points to this worktree"
         else
-            herd link "$SITE_NAME" 2>/dev/null
+            run_with_spinner "Linking $SITE_NAME.test via Herd…" \
+                herd link "$SITE_NAME" || error "herd link failed — cannot mount without a working domain"
             success "herd link updated (was: $current_target)"
         fi
     else
-        herd link "$SITE_NAME" 2>/dev/null
+        run_with_spinner "Linking $SITE_NAME.test via Herd…" \
+            herd link "$SITE_NAME" || error "herd link failed — cannot mount without a working domain"
         success "herd link created"
     fi
 
@@ -680,15 +682,19 @@ cmd_unmount() {
         canonical_target="$(registry_get canonical)"
         # Fallback chain: registry canonical → CANONICAL_SITE env → bare unlink
         if [[ -n "$canonical_target" && -d "$canonical_target" ]]; then
-            ln -sfn "$canonical_target" "$herd_link"
+            run_with_spinner "Restoring $SITE_NAME.test to canonical via Herd…" \
+                bash -c "cd '$canonical_target' && herd link '$SITE_NAME'" \
+                || warn "herd link restore failed — canonical may not be live"
             success "herd link restored to canonical: $canonical_target"
             restored_domain="$SITE_NAME.test"
         elif [[ -d "$CANONICAL_SITE" ]]; then
-            ln -sfn "$CANONICAL_SITE" "$herd_link"
+            run_with_spinner "Restoring $SITE_NAME.test to canonical via Herd…" \
+                bash -c "cd '$CANONICAL_SITE' && herd link '$SITE_NAME'" \
+                || warn "herd link restore failed — canonical may not be live"
             success "herd link restored to canonical: $CANONICAL_SITE"
             restored_domain="$SITE_NAME.test"
         else
-            herd unlink "$SITE_NAME" 2>/dev/null || true
+            herd unlink "$SITE_NAME" 2>/dev/null || warn "herd unlink had errors"
             success "herd unlink done"
         fi
         registry_clear_active
