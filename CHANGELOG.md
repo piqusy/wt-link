@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.0] — 2026-04-10
+
+### Added
+- **Global mount registry** — a per-site registry file (`~/.config/wt-link/<site>.active`) now tracks which worktree currently owns the Herd link. This prevents two worktrees silently competing for the same `.test` domain.
+- **Mount ownership check** — mounting a worktree when another worktree already owns the domain warns the user and exits. Pass `--force` / `-f` to override and steal the link.
+- **Registry in `status`** — `wt-link status` now shows the registry canonical path and active owner alongside local state.
+
+### Changed
+- Herd link restore target is now stored in the global registry (`canonical=`) instead of the per-worktree state file (`herd_previous_target`). Unmount reads the registry to restore the canonical site; per-worktree state no longer needs to track this.
+- **Code organisation** — section headers renamed to consistent `UPPER CASE`; `Helpers` split into `OUTPUT` and `PREREQUISITES`; `WP_CORE_MARKER`, `STATE FILE`, and `GLOBAL REGISTRY` merged into a single `STATE & REGISTRY` block.
+
 ## [1.3.4] — 2026-04-10
 
 ### Fixed
