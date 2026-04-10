@@ -513,32 +513,56 @@ cmd_mount() {
     local herd_links_dir="$HOME/Library/Application Support/Herd/config/valet/Sites"
     local herd_link="$herd_links_dir/$SITE_NAME"
 
+    # Ensure canonical is recorded in the registry (first time or if it was never set)
+    local reg_canonical
+    reg_canonical="$(registry_get canonical)"
+    if [[ -z "$reg_canonical" ]]; then
+        registry_set "canonical" "$CANONICAL_SITE"
+    fi
+
+    # Check if another worktree currently owns this domain
+    local reg_active
+    reg_active="$(registry_get active)"
+    if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
+        echo ""
+        warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
+        echo -e "  Active: $reg_active"
+        echo ""
+        if [[ $FORCE -eq 1 ]]; then
+            warn "  --force: switching domain to this worktree"
+        else
+            printf "  Switch domain to this worktree? [y/N] "
+            local answer
+            read -r answer
+            if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+                echo ""
+                warn "Aborted. Use --force to switch without prompting."
+                echo ""
+                echo -e "  To switch:     ${BOLD}wt-link mount --force${RESET}"
+                echo -e "  To unmount:    cd $reg_active && wt-link unmount"
+                echo ""
+                exit 0
+            fi
+        fi
+    fi
+
     if [[ -L "$herd_link" ]]; then
         local current_target
         current_target="$(readlink "$herd_link")"
         if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
             success "herd link already points to this worktree"
         else
-            # Save where it pointed so unmount can restore it — but only if we
-            # haven't already saved a target (re-mount guard: don't overwrite the
-            # original restore target with the worktree path itself).
-            local existing_previous
-            existing_previous="$(state_get herd_previous_target 2>/dev/null || true)"
-            if [[ -z "$existing_previous" ]]; then
-                state_set "herd_previous_target" "$current_target"
-            fi
             herd link "$SITE_NAME" 2>/dev/null
-            state_set "herd_linked" "1"
             success "herd link updated (was: $current_target)"
         fi
     else
-        # No pre-existing link — record canonical as the restore target so unmount
-        # can re-link it instead of leaving the domain unresolved.
-        state_set "herd_previous_target" "$CANONICAL_SITE"
         herd link "$SITE_NAME" 2>/dev/null
-        state_set "herd_linked" "1"
         success "herd link created"
     fi
+
+    # Update registry: this worktree now owns the domain
+    registry_set "active" "$WORKTREE_ROOT"
+    state_set "herd_linked" "1"
 
     # 7. DB upgrade check ────────────────────────────────────────────────────────
     local db_version
@@ -759,6 +783,12 @@ cmd_status() {
 # ──────────────────────────────────────────────────────────────────────────────
 
 COMMAND="${1:-help}"
+shift 2>/dev/null || true
+
+FORCE=0
+for arg in "$@"; do
+    [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
+done
 
 case "$COMMAND" in
     mount)   cmd_mount ;;
