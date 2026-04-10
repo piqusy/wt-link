@@ -622,8 +622,8 @@ cmd_mount() {
         if [[ -f "$public_manifest" ]]; then
             success "  build: already built"
         else
-            step "  Running $pm run build..."
-            run_pm_build "$pm" "$pkg" 2>&1 | tail -5 || warn "  build had errors — check manually"
+            run_with_spinner "  $pm run build…" \
+                run_pm_build "$pm" "$pkg" || warn "  build had errors — check manually"
             state_set "public_built_$pkg_name" "1"
             success "  build: done"
         fi
