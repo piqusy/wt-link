@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.7.0"
+WT_LINK_VERSION="1.7.1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTPUT
@@ -606,6 +606,7 @@ cmd_mount() {
                         cp -Rl "$src" "$dest" \
                         || { warn "  $vendor_dir/: hardlink copy failed, keeping without vendor"; continue; }
                     success "  $vendor_dir/: converted from symlink to hardlink copy"
+                    state_set "vendor_copied_${pkg_name}_${vendor_dir}" "1"
                     [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
                 fi
             elif [[ -d "$dest" && ! -L "$dest" ]]; then
@@ -616,6 +617,7 @@ cmd_mount() {
                     cp -Rl "$src" "$dest" \
                     || { warn "  $vendor_dir/: hardlink copy failed — will fall back to composer install"; continue; }
                 success "  $vendor_dir/: hardlink copy from canonical"
+                state_set "vendor_copied_${pkg_name}_${vendor_dir}" "1"
                 [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
             fi
             # vendor-prefixed/ is optional — no warning if absent in canonical
@@ -751,7 +753,7 @@ cmd_unmount() {
             if [[ -L "$vendor_dest" ]]; then
                 rm "$vendor_dest"
                 success "  $vendor_dir/ symlink removed: $pkg_basename"
-            elif [[ -d "$vendor_dest" ]]; then
+            elif [[ -d "$vendor_dest" && $has_state -eq 1 && "$(state_get "vendor_copied_${pkg_basename}_${vendor_dir}")" == "1" ]]; then
                 rm -rf "$vendor_dest"
                 success "  $vendor_dir/ removed: $pkg_basename"
             fi

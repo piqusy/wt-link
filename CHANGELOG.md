@@ -1,6 +1,12 @@
 # Changelog
 
-## [1.7.0] — 2026-04-10
+## [1.7.1] — 2026-04-10
+
+### Fixed
+- `unmount` no longer removes `vendor/` or `vendor-prefixed/` directories that were not created by `mount`. Real directories are now only deleted when a state key (`vendor_copied_<pkg>_<dir>=1`) confirms mount placed them. Previously the `elif -d` branch would `rm -rf` any existing vendor dir unconditionally, risking data loss on canonical or tracked projects.
+- `mount` now records `vendor_copied_<pkg>_<vendor_dir>=1` in the state file for each hardlink-copied vendor directory so `unmount` can reverse exactly what was done.
+
+
 
 ### Added
 - **`rebuild-composer` command** — deletes `vendor/` and `vendor-prefixed/` from all Eightshift packages, then restores them via hardlink copy from canonical (or `composer install` fallback). Useful after pulling upstream composer changes.
