@@ -479,22 +479,20 @@ cmd_mount() {
     if [[ -f "$WP_CORE_MARKER" ]]; then
         success "WP core already present ($(wp_clean core version --path="$WORKTREE_ROOT" || echo 'unknown'))"
     else
-        step "Downloading WordPress $WP_VERSION..."
         local wp_cache_gz="$HOME/.wp-cli/cache/core/wordpress-${WP_VERSION}-en_US.tar.gz"
 
         if [[ -f "$wp_cache_gz" ]]; then
-            step "  Extracting from WP-CLI cache..."
             local tmp_dir
             tmp_dir="$(mktemp -d)"
-            tar xzf "$wp_cache_gz" -C "$tmp_dir"
-            rsync -a --exclude='wp-content' "$tmp_dir/wordpress/" "$WORKTREE_ROOT/"
+            run_with_spinner "Extracting WordPress $WP_VERSION from cache…" \
+                bash -c "tar xzf '$wp_cache_gz' -C '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'"
             rm -rf "$tmp_dir"
         else
             # Fallback: download via WP-CLI into a temp dir, then rsync
             local tmp_dir
             tmp_dir="$(mktemp -d)"
-            wp core download --path="$tmp_dir" --version="$WP_VERSION" 2>/dev/null
-            rsync -a --exclude='wp-content' "$tmp_dir/" "$WORKTREE_ROOT/"
+            run_with_spinner "Downloading WordPress $WP_VERSION…" \
+                bash -c "wp core download --path='$tmp_dir' --version='$WP_VERSION' 2>/dev/null && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'"
             rm -rf "$tmp_dir"
         fi
         state_set "wp_core_installed" "1"
