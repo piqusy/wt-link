@@ -601,8 +601,8 @@ cmd_mount() {
             if [[ -f "$pkg/vendor/autoload.php" ]]; then
                 success "  composer: vendor/ already installed locally"
             else
-                step "  Running composer install (no canonical vendor/ found)..."
-                composer install --no-interaction --working-dir="$pkg" 2>/dev/null | tail -2 || warn "  composer install had warnings"
+                run_with_spinner "  composer install…" \
+                    composer install --no-interaction --working-dir="$pkg" 2>/dev/null || warn "  composer install had warnings"
                 success "  composer: done"
             fi
         fi
