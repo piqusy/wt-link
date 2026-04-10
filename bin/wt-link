@@ -632,7 +632,7 @@ cmd_unmount() {
 
     # 1. Herd unlink ─────────────────────────────────────────────────────────────
     local herd_link="$HOME/Library/Application Support/Herd/config/valet/Sites/$SITE_NAME"
-    local reg_active
+    local reg_active restored_domain=""
     reg_active="$(registry_get active)"
 
     if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
@@ -641,7 +641,7 @@ cmd_unmount() {
         echo -e "  Active owner: $reg_active"
     else
         # This worktree owns the domain (or there's no registry) — restore canonical
-        local canonical_target restored_domain=""
+        local canonical_target
         canonical_target="$(registry_get canonical)"
         # Fallback chain: registry canonical → CANONICAL_SITE env → bare unlink
         if [[ -n "$canonical_target" && -d "$canonical_target" ]]; then
@@ -657,11 +657,6 @@ cmd_unmount() {
             success "herd unlink done"
         fi
         registry_clear_active
-
-        # Wait for Herd to process the restored link
-        if [[ -n "$restored_domain" ]]; then
-            wait_for_herd "$restored_domain" 10
-        fi
     fi
 
 
@@ -741,6 +736,11 @@ cmd_unmount() {
     # 7. Clean up state file ─────────────────────────────────────────────────────
     rm -f "$STATE_FILE"
     success "State file cleaned up"
+
+    # Verify domain (Herd was triggered at step 1 — should be live by now) ───────
+    if [[ -n "$restored_domain" ]]; then
+        wait_for_herd "$restored_domain" 10
+    fi
 
     echo ""
     success "Unmount complete. Canonical site restored at https://$SITE_NAME.test/"
