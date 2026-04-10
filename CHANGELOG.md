@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.7.0] — 2026-04-10
+
+### Added
+- **`rebuild-composer` command** — deletes `vendor/` and `vendor-prefixed/` from all Eightshift packages, then restores them via hardlink copy from canonical (or `composer install` fallback). Useful after pulling upstream composer changes.
+- **`rebuild-node` command** — deletes `node_modules/` and `public/` from all Eightshift packages, reinstalls JS deps, and rebuilds assets. Auto-detects package manager per package.
+- Fish aliases `wlrc` (rebuild-composer) and `wlrn` (rebuild-node) documented in help output.
+
+### Changed
+- **`vendor/` and `vendor-prefixed/` are now hardlink-copied instead of symlinked** — `cp -Rl` creates a hardlink tree (zero extra disk on APFS), and PHP `__FILE__` resolves to the real worktree path rather than traversing a symlink to the canonical repo. Existing legacy symlinks are transparently upgraded on next mount.
+- Mount detects legacy symlinks for `vendor/`/`vendor-prefixed/` and replaces them with hardlink copies automatically.
+- Unmount now removes real `vendor/`/`vendor-prefixed/` directories (previously only removed symlinks).
+
+### Fixed
+- All silent exit points caused by `set -euo pipefail` now produce error messages:
+  - `--cwd` with a non-existent directory now errors with `"Directory not found: <path>"` instead of exiting silently.
+  - Unguarded `run_with_spinner` calls for WP core extract and download now `error()` on failure.
+  - Unguarded `cp` for `wp-config.php` now errors on failure.
+  - `ln -s` for plugin symlinks now warns and continues instead of aborting silently.
+  - `ln -s` for uploads symlink now warns instead of aborting silently.
+  - `wp_clean core version` in `cmd_status` now has `|| true` guard to prevent silent crash when WP-CLI is unavailable.
+  - `(( i++ ))` in spinner loop replaced with `i=$(( i + 1 ))` to avoid spurious `set -e` exit when `i=0`.
+  - `(( elapsed += interval ))` in `wait_for_herd` now guarded with `|| true`.
+
 ## [1.6.2] — 2026-04-10
 
 ### Fixed

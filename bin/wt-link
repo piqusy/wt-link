@@ -36,7 +36,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="1.6.2"
+WT_LINK_VERSION="1.7.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # OUTPUT
@@ -83,9 +83,11 @@ case "${1:-help}" in
         echo "Usage: wt-link <command> [--cwd PATH]"
         echo ""
         echo "Commands:"
-        echo "  mount    Set up a git worktree as a fully working local Herd site"
-        echo "  unmount  Tear down and restore the canonical site"
-        echo "  status   Show current link status"
+        echo "  mount             Set up a git worktree as a fully working local Herd site"
+        echo "  unmount           Tear down and restore the canonical site"
+        echo "  status            Show current link status"
+        echo "  rebuild-composer  Delete vendor/ + vendor-prefixed/ and re-run composer install"
+        echo "  rebuild-node      Delete node_modules/ + public/ and rebuild JS/CSS assets"
         echo ""
         echo "Options:"
         echo "  --cwd PATH   Run against a specific worktree directory (default: current directory)"
@@ -94,6 +96,8 @@ case "${1:-help}" in
         echo "  wlm   wt-link mount"
         echo "  wlu   wt-link unmount"
         echo "  wls   wt-link status"
+        echo "  wlrc  wt-link rebuild-composer"
+        echo "  wlrn  wt-link rebuild-node"
         echo ""
         echo "Environment:"
         echo "  CANONICAL_SITE   Override the canonical site path (default: ~/Sites/<site-name>)"
@@ -157,7 +161,7 @@ find_project_root() {
 }
 
 if [[ -n "$EXPLICIT_CWD" ]]; then
-    START_DIR="$(cd "$EXPLICIT_CWD" && pwd)"
+    START_DIR="$(cd "$EXPLICIT_CWD" && pwd)" || error "Directory not found: $EXPLICIT_CWD"
 else
     START_DIR="$(pwd)"
 fi
@@ -346,7 +350,7 @@ run_with_spinner() {
         local spin_char="${spinner:$(( i % ${#spinner} )):1}"
         printf "\r  %s %s" "$spin_char" "$label"
         sleep 0.1
-        (( i++ ))
+        i=$(( i + 1 ))
     done
 
     wait "$pid"
@@ -390,7 +394,7 @@ wait_for_herd() {
         local spin_char="${spinner:$(( elapsed % ${#spinner} )):1}"
         printf "\r  %s Waiting for %s to respond… (%ds)" "$spin_char" "$domain" "$elapsed"
         sleep "$interval"
-        (( elapsed += interval ))
+        (( elapsed += interval )) || true
     done
 
     printf "\r\033[K"
@@ -487,14 +491,16 @@ cmd_mount() {
             local tmp_dir
             tmp_dir="$(mktemp -d)"
             run_with_spinner "Extracting WordPress $WP_VERSION from cache…" \
-                bash -c "tar xzf '$wp_cache_gz' -C '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'"
+                bash -c "tar xzf '$wp_cache_gz' -C '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'" \
+                || error "Failed to extract WordPress $WP_VERSION from cache"
             rm -rf "$tmp_dir"
         else
             # Fallback: download via WP-CLI into a temp dir, then rsync
             local tmp_dir
             tmp_dir="$(mktemp -d)"
             run_with_spinner "Downloading WordPress $WP_VERSION…" \
-                bash -c "wp core download --path='$tmp_dir' --version='$WP_VERSION' 2>/dev/null && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'"
+                bash -c "wp core download --path='$tmp_dir' --version='$WP_VERSION' 2>/dev/null && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
+                || error "Failed to download WordPress $WP_VERSION"
             rm -rf "$tmp_dir"
         fi
         state_set "wp_core_installed" "1"
@@ -507,7 +513,8 @@ cmd_mount() {
     else
         local canonical_config="$CANONICAL_SITE/wp-config.php"
         [[ -f "$canonical_config" ]] || error "wp-config.php not found in canonical site: $canonical_config"
-        cp "$canonical_config" "$WORKTREE_ROOT/wp-config.php"
+        cp "$canonical_config" "$WORKTREE_ROOT/wp-config.php" \
+            || error "Failed to copy wp-config.php from canonical site"
         state_set "wp_config_copied" "1"
         success "wp-config.php copied from canonical site"
     fi
@@ -533,7 +540,8 @@ cmd_mount() {
             else
                 link_target="$plugin_path"
             fi
-            ln -s "$link_target" "$dest"
+            ln -s "$link_target" "$dest" \
+                || { warn "  Failed to link $plugin_name — skipping"; continue; }
             echo "    linked: $plugin_name"
             linked_count=$((linked_count + 1))
         fi
@@ -548,7 +556,8 @@ cmd_mount() {
     elif [[ -d "$uploads_dest" ]]; then
         warn "uploads dir already exists (not a symlink) — skipping"
     elif [[ -d "$uploads_src" ]]; then
-        ln -s "$uploads_src" "$uploads_dest"
+        ln -s "$uploads_src" "$uploads_dest" \
+            || warn "Failed to symlink uploads — skipping"
         state_set "uploads_linked" "1"
         success "uploads symlinked from canonical site"
     else
@@ -581,19 +590,32 @@ cmd_mount() {
             canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
         fi
 
-        # composer deps — symlink vendor/ and vendor-prefixed/ from canonical
+        # composer deps — hardlink-copy vendor/ and vendor-prefixed/ from canonical
+        # (cp -Rl creates a hardlink tree: zero extra disk on APFS, but PHP __FILE__
+        #  resolves to the real worktree path — no symlink indirection issues)
         local composer_ok=0
         for vendor_dir in vendor vendor-prefixed; do
             local dest="$pkg/$vendor_dir"
             local src="$canonical_pkg/$vendor_dir"
 
             if [[ -L "$dest" ]]; then
-                [[ "$vendor_dir" == "vendor" ]] && { success "  vendor/: already symlinked"; composer_ok=1; }
-                [[ "$vendor_dir" == "vendor-prefixed" ]] && success "  vendor-prefixed/: already symlinked"
+                # Legacy symlink — replace with hardlink copy
+                rm "$dest"
+                if [[ -d "$src" ]]; then
+                    run_with_spinner "  $vendor_dir/: converting symlink → hardlink copy…" \
+                        cp -Rl "$src" "$dest" \
+                        || { warn "  $vendor_dir/: hardlink copy failed, keeping without vendor"; continue; }
+                    success "  $vendor_dir/: converted from symlink to hardlink copy"
+                    [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
+                fi
+            elif [[ -d "$dest" && ! -L "$dest" ]]; then
+                [[ "$vendor_dir" == "vendor" ]] && { success "  vendor/: already present (local copy)"; composer_ok=1; }
+                [[ "$vendor_dir" == "vendor-prefixed" ]] && success "  vendor-prefixed/: already present (local copy)"
             elif [[ -d "$src" ]]; then
-                [[ -d "$dest" && ! -L "$dest" ]] && rm -rf "$dest"
-                ln -s "$src" "$dest"
-                success "  $vendor_dir/: symlinked from canonical"
+                run_with_spinner "  $vendor_dir/: hardlink copy from canonical…" \
+                    cp -Rl "$src" "$dest" \
+                    || { warn "  $vendor_dir/: hardlink copy failed — will fall back to composer install"; continue; }
+                success "  $vendor_dir/: hardlink copy from canonical"
                 [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
             fi
             # vendor-prefixed/ is optional — no warning if absent in canonical
@@ -729,6 +751,9 @@ cmd_unmount() {
             if [[ -L "$vendor_dest" ]]; then
                 rm "$vendor_dest"
                 success "  $vendor_dir/ symlink removed: $pkg_basename"
+            elif [[ -d "$vendor_dest" ]]; then
+                rm -rf "$vendor_dest"
+                success "  $vendor_dir/ removed: $pkg_basename"
             fi
         done
         local node_modules_dest="$pkg/node_modules"
@@ -835,7 +860,7 @@ cmd_status() {
     echo -e "${BOLD}WordPress core:${RESET}"
     if [[ -f "$WP_CORE_MARKER" ]]; then
         local _wpcv
-        _wpcv="$(wp_clean core version --path="$WORKTREE_ROOT")"
+        _wpcv="$(wp_clean core version --path="$WORKTREE_ROOT" || true)"
         echo -e "  ${GREEN}✓ present ($_wpcv)${RESET}"
     else
         echo -e "  ${RED}✗ not installed${RESET}"
@@ -889,6 +914,136 @@ cmd_status() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# REBUILD COMPOSER
+# ──────────────────────────────────────────────────────────────────────────────
+
+cmd_rebuild_composer() {
+    require_cmd composer
+
+    local packages
+    mapfile -t packages < <(find_eightshift_packages)
+
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        warn "No Eightshift packages found"
+        exit 0
+    fi
+
+    log "Rebuilding composer deps for ${#packages[@]} package(s)"
+    echo ""
+
+    for pkg in "${packages[@]}"; do
+        local pkg_name
+        pkg_name="$(basename "$pkg")"
+        local pkg_type="package"
+        [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+        [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
+
+        log "  [$pkg_type] $pkg_name"
+
+        # Resolve canonical package path for hardlink-copy fallback
+        local canonical_pkg=""
+        if [[ "$pkg_type" == "theme" ]]; then
+            canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
+        elif [[ "$pkg_type" == "plugin" ]]; then
+            canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
+        fi
+
+        for vendor_dir in vendor vendor-prefixed; do
+            local dest="$pkg/$vendor_dir"
+            if [[ -L "$dest" || -d "$dest" ]]; then
+                step "  Removing $vendor_dir/…"
+                rm -rf "$dest"
+                success "  $vendor_dir/ removed"
+            fi
+        done
+
+        # Re-copy from canonical (hardlink) or composer install
+        local rebuilt=0
+        for vendor_dir in vendor vendor-prefixed; do
+            local dest="$pkg/$vendor_dir"
+            local src="$canonical_pkg/$vendor_dir"
+            if [[ -d "$src" ]]; then
+                run_with_spinner "  $vendor_dir/: hardlink copy from canonical…" \
+                    cp -Rl "$src" "$dest" \
+                    || { warn "  $vendor_dir/: hardlink copy failed"; continue; }
+                success "  $vendor_dir/: hardlink copy done"
+                [[ "$vendor_dir" == "vendor" ]] && rebuilt=1
+            fi
+        done
+
+        if [[ $rebuilt -eq 0 ]]; then
+            run_with_spinner "  composer install…" \
+                composer install --no-interaction --working-dir="$pkg" 2>/dev/null \
+                || warn "  composer install had warnings"
+            success "  composer install done"
+        fi
+    done
+
+    echo ""
+    success "Composer rebuild complete"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# REBUILD NODE
+# ──────────────────────────────────────────────────────────────────────────────
+
+cmd_rebuild_node() {
+    local packages
+    mapfile -t packages < <(find_eightshift_packages)
+
+    if [[ ${#packages[@]} -eq 0 ]]; then
+        warn "No Eightshift packages found"
+        exit 0
+    fi
+
+    log "Rebuilding node deps + assets for ${#packages[@]} package(s)"
+    echo ""
+
+    for pkg in "${packages[@]}"; do
+        local pkg_name
+        pkg_name="$(basename "$pkg")"
+        local pkg_type="package"
+        [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+        [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
+
+        log "  [$pkg_type] $pkg_name"
+
+        # Remove node_modules
+        local node_modules="$pkg/node_modules"
+        if [[ -L "$node_modules" || -d "$node_modules" ]]; then
+            step "  Removing node_modules/…"
+            rm -rf "$node_modules"
+            success "  node_modules/ removed"
+        fi
+
+        # Remove public/
+        local public_dir="$pkg/public"
+        if [[ -d "$public_dir" ]]; then
+            step "  Removing public/…"
+            rm -rf "$public_dir"
+            success "  public/ removed"
+        fi
+
+        local pm
+        pm="$(detect_package_manager "$pkg")"
+        require_pm "$pm"
+
+        run_with_spinner "  $pm install…" \
+            run_pm_install "$pm" "$pkg" \
+            || warn "  $pm install had warnings"
+        success "  node_modules: installed via $pm"
+
+        run_with_spinner "  $pm run build…" \
+            run_pm_build "$pm" "$pkg" \
+            || warn "  build had errors — check manually"
+        success "  build: done"
+    done
+
+    echo ""
+    success "Node rebuild complete"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # ENTRY POINT
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -901,9 +1056,11 @@ for arg in "$@"; do
 done
 
 case "$COMMAND" in
-    mount)   cmd_mount ;;
-    unmount) cmd_unmount ;;
-    status)  cmd_status ;;
+    mount)            cmd_mount ;;
+    unmount)          cmd_unmount ;;
+    status)           cmd_status ;;
+    rebuild-composer) cmd_rebuild_composer ;;
+    rebuild-node)     cmd_rebuild_node ;;
     *)
         error "Unknown command: $COMMAND. Run 'wt-link --help' for usage."
         ;;
