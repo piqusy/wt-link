@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0] — 2026-04-10
+
+### Added
+- **Domain availability check** — after `herd link` (mount) and `herd unlink` (unmount), wt-link polls both `http://` and `https://` with a braille spinner until the domain responds or a 10s timeout is reached. Any non-zero HTTP response counts as live; a warning is shown on timeout.
+
+### Changed
+- **Herd link moved to step 1 of mount** — the domain is now registered with Herd at the very beginning of mount so Herd's nginx config reloads in the background while WP core, composer deps, node_modules, and the asset build run. The domain poll at the end acts as a verification gate and typically returns immediately.
+
 ## [1.4.0] — 2026-04-10
 
 ### Added
