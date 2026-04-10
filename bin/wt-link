@@ -380,7 +380,65 @@ cmd_mount() {
     # Ensure state file always exists after mount (even if everything was already present)
     touch "$STATE_FILE"
 
-    # 1. WP Core ────────────────────────────────────────────────────────────────
+    local herd_links_dir="$HOME/Library/Application Support/Herd/config/valet/Sites"
+    local herd_link="$herd_links_dir/$SITE_NAME"
+
+    # 1. Herd link ───────────────────────────────────────────────────────────────
+    # Register domain first so Herd reloads its config in the background while
+    # the rest of the project builds (WP core, deps, assets).
+
+    # Ensure canonical is recorded in the registry (first time or if it was never set)
+    local reg_canonical
+    reg_canonical="$(registry_get canonical)"
+    if [[ -z "$reg_canonical" ]]; then
+        registry_set "canonical" "$CANONICAL_SITE"
+    fi
+
+    # Check if another worktree currently owns this domain
+    local reg_active
+    reg_active="$(registry_get active)"
+    if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
+        echo ""
+        warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
+        echo -e "  Active: $reg_active"
+        echo ""
+        if [[ $FORCE -eq 1 ]]; then
+            warn "  --force: switching domain to this worktree"
+        else
+            printf "  Switch domain to this worktree? [y/N] "
+            local answer
+            read -r answer
+            if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+                echo ""
+                warn "Aborted. Use --force to switch without prompting."
+                echo ""
+                echo -e "  To switch:     ${BOLD}wt-link mount --force${RESET}"
+                echo -e "  To unmount:    cd $reg_active && wt-link unmount"
+                echo ""
+                exit 0
+            fi
+        fi
+    fi
+
+    if [[ -L "$herd_link" ]]; then
+        local current_target
+        current_target="$(readlink "$herd_link")"
+        if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
+            success "herd link already points to this worktree"
+        else
+            herd link "$SITE_NAME" 2>/dev/null
+            success "herd link updated (was: $current_target)"
+        fi
+    else
+        herd link "$SITE_NAME" 2>/dev/null
+        success "herd link created"
+    fi
+
+    # Update registry: this worktree now owns the domain
+    registry_set "active" "$WORKTREE_ROOT"
+    state_set "herd_linked" "1"
+
+    # 2. WP Core ────────────────────────────────────────────────────────────────
     if [[ -f "$WP_CORE_MARKER" ]]; then
         success "WP core already present ($(wp_clean core version --path="$WORKTREE_ROOT" || echo 'unknown'))"
     else
@@ -406,7 +464,7 @@ cmd_mount() {
         success "WP core $WP_VERSION installed"
     fi
 
-    # 2. wp-config.php ──────────────────────────────────────────────────────────
+    # 3. wp-config.php ──────────────────────────────────────────────────────────
     if [[ -f "$WORKTREE_ROOT/wp-config.php" ]]; then
         success "wp-config.php already present"
     else
@@ -417,7 +475,7 @@ cmd_mount() {
         success "wp-config.php copied from canonical site"
     fi
 
-    # 3. Symlink untracked plugins ───────────────────────────────────────────────
+    # 4. Symlink untracked plugins ───────────────────────────────────────────────
     step "Symlinking untracked plugins from canonical site..."
     local linked_count=0
     while IFS= read -r plugin_path; do
@@ -445,7 +503,7 @@ cmd_mount() {
     done < <(find_untracked_plugins)
     success "Plugins: $linked_count newly linked"
 
-    # 4. Symlink uploads ─────────────────────────────────────────────────────────
+    # 5. Symlink uploads ─────────────────────────────────────────────────────────
     local uploads_dest="$WP_CONTENT/uploads"
     local uploads_src="$CANONICAL_WP_CONTENT/uploads"
     if [[ -L "$uploads_dest" ]]; then
@@ -460,7 +518,7 @@ cmd_mount() {
         warn "No uploads dir found in canonical site — skipping"
     fi
 
-    # 5. Eightshift packages: composer + node_modules + build ────────────────────
+    # 6. Eightshift packages: composer + node_modules + build ────────────────────
     local packages
     mapfile -t packages < <(find_eightshift_packages)
 
@@ -536,65 +594,10 @@ cmd_mount() {
         fi
     done
 
-    # 6. Herd link ───────────────────────────────────────────────────────────────
-    local herd_links_dir="$HOME/Library/Application Support/Herd/config/valet/Sites"
-    local herd_link="$herd_links_dir/$SITE_NAME"
-
-    # Ensure canonical is recorded in the registry (first time or if it was never set)
-    local reg_canonical
-    reg_canonical="$(registry_get canonical)"
-    if [[ -z "$reg_canonical" ]]; then
-        registry_set "canonical" "$CANONICAL_SITE"
-    fi
-
-    # Check if another worktree currently owns this domain
-    local reg_active
-    reg_active="$(registry_get active)"
-    if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
-        echo ""
-        warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
-        echo -e "  Active: $reg_active"
-        echo ""
-        if [[ $FORCE -eq 1 ]]; then
-            warn "  --force: switching domain to this worktree"
-        else
-            printf "  Switch domain to this worktree? [y/N] "
-            local answer
-            read -r answer
-            if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
-                echo ""
-                warn "Aborted. Use --force to switch without prompting."
-                echo ""
-                echo -e "  To switch:     ${BOLD}wt-link mount --force${RESET}"
-                echo -e "  To unmount:    cd $reg_active && wt-link unmount"
-                echo ""
-                exit 0
-            fi
-        fi
-    fi
-
-    if [[ -L "$herd_link" ]]; then
-        local current_target
-        current_target="$(readlink "$herd_link")"
-        if [[ "$current_target" == "$WORKTREE_ROOT" ]]; then
-            success "herd link already points to this worktree"
-        else
-            herd link "$SITE_NAME" 2>/dev/null
-            success "herd link updated (was: $current_target)"
-        fi
-    else
-        herd link "$SITE_NAME" 2>/dev/null
-        success "herd link created"
-    fi
-
-    # Update registry: this worktree now owns the domain
-    registry_set "active" "$WORKTREE_ROOT"
-    state_set "herd_linked" "1"
-
-    # Wait for Herd to process the link before declaring success
+    # 7. Verify domain (Herd was triggered at step 1 — should be live by now) ────
     wait_for_herd "$SITE_NAME.test" 10
 
-    # 7. DB upgrade check ────────────────────────────────────────────────────────
+    # 8. DB upgrade check ────────────────────────────────────────────────────────
     local db_version
     db_version="$(wp_clean core version --path="$WORKTREE_ROOT" || true)"
     echo ""
