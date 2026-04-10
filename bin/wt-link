@@ -733,6 +733,24 @@ cmd_status() {
     fi
 
     echo ""
+    echo -e "${BOLD}Registry ($SITE_NAME):${RESET}"
+    local reg_canonical reg_active
+    reg_canonical="$(registry_get canonical)"
+    reg_active="$(registry_get active)"
+    if [[ -f "$REGISTRY_FILE" ]]; then
+        echo -e "  canonical : ${reg_canonical:-${YELLOW}(not set)${RESET}}"
+        if [[ -z "$reg_active" ]]; then
+            echo -e "  active    : ${GREEN}(none — canonical is live)${RESET}"
+        elif [[ "$reg_active" == "$WORKTREE_ROOT" ]]; then
+            echo -e "  active    : ${GREEN}THIS worktree${RESET}"
+        else
+            echo -e "  active    : ${YELLOW}$reg_active${RESET}"
+        fi
+    else
+        echo -e "  ${YELLOW}⚠ no registry file (no worktree has been mounted yet for $SITE_NAME)${RESET}"
+    fi
+
+    echo ""
     echo -e "${BOLD}WordPress core:${RESET}"
     if [[ -f "$WP_CORE_MARKER" ]]; then
         local _wpcv
