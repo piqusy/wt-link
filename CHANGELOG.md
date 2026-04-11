@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.4.1] — 2026-04-11
+
+### Changed
+- Starship config snippet in README now includes `ignore_timeout = true`.
+
 ## [2.4.0] — 2026-04-11
 
 ### Added

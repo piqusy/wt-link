@@ -174,6 +174,7 @@ when = true
 detect_files = [".worktree-link-state"]
 format = "[$output]($style) "
 style = "bold yellow"
+ignore_timeout = true
 ```
 
 ## License
