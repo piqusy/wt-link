@@ -1,0 +1,5 @@
+# shellcheck project-wide configuration
+# SC1091: not following sourced files — paths are runtime-computed;
+#         source= directives are provided as hints but files may not be
+#         found when shellcheck is invoked from a different working directory.
+disable=SC1091
