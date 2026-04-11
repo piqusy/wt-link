@@ -37,18 +37,20 @@ sudo cp -r lib/wt-link /usr/local/lib/
 ## Usage
 
 ```
-wt-link <command> [--cwd PATH] [--force] [--hard-copy]
+wt-link <command> [--cwd PATH] [--force] [--yes] [--hard-copy]
 
 Commands:
   mount             Set up a git worktree as a fully working local Herd site
   unmount           Tear down and restore the canonical site
   status            Show current link status
+  list              Show all registered sites and their active worktrees
   rebuild-composer  Re-run composer install for all Eightshift packages
   rebuild-node      Re-run <pm> install + build for all Eightshift packages
 
 Options:
   --cwd PATH   Run against a specific worktree directory (default: current dir)
-  --force      Force re-mount even if already mounted
+  --force      Switch domain to this worktree without prompting (shows a notice)
+  --yes / -y   Proceed non-interactively with no output (for hook contexts)
   --hard-copy  Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
 ```
 
@@ -76,6 +78,9 @@ wt-link unmount
 # Check status
 wt-link status
 
+# List all registered sites (works from any directory)
+wt-link list
+
 # Rebuild PHP deps after a composer.json change
 wt-link rebuild-composer
 
@@ -102,12 +107,12 @@ alias wlrn 'wt-link rebuild-node'
 3. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
 4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
 5. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
-   - Symlinks `vendor/` and `vendor_prefixed/` from the canonical site (falls back to `composer install` if canonical has none)
-   - Runs `<pm> install` — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
-   - Runs `<pm> run build` for themes; skips build for plugins
+   - Hardlink-copies `vendor/` and `vendor-prefixed/` from the canonical site (`cp -Rl`; zero extra disk on APFS, falls back to `composer install` if canonical has none)
+   - Runs `<pm> install` sequentially per theme — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
+   - Runs `<pm> run build` in parallel across themes; skips build for plugins
 6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`
 
-A `.worktree-link-state` file tracks everything created so `unmount` can reverse it precisely.
+A state file at `~/.config/wt-link/<site>.<worktree-basename>.state` tracks everything created so `unmount` can reverse it precisely. Existing `.worktree-link-state` files inside worktrees are migrated to this location automatically on next mount.
 
 ## What `unmount` does
 
@@ -151,7 +156,8 @@ lib/wt-link/
   runtime.sh       # run_pm_install, run_pm_build, run_with_spinner, wait_for_herd
   mount.sh         # cmd_mount + 8 private _mount_* sub-functions
   unmount.sh       # cmd_unmount
-  status.sh        # cmd_status
+  status.sh        # cmd_status, cmd_starship
+  list.sh          # cmd_list
   rebuild.sh       # cmd_rebuild_composer, cmd_rebuild_node
 ```
 
@@ -175,7 +181,6 @@ Add to `~/.config/starship.toml`:
 [custom.wt-link]
 command = "wt-link starship"
 when = true
-detect_files = [".worktree-link-state"]
 format = "[$output]($style) "
 style = "bold yellow"
 ignore_timeout = true
@@ -187,8 +192,9 @@ Add to `~/.p10k.zsh`:
 
 ```zsh
 function prompt_wt_link() {
-  [[ -f .worktree-link-state ]] || return
-  p10k segment -f yellow -t '⛓'
+  local out
+  out="$(wt-link starship 2>/dev/null)"
+  [[ -n "$out" ]] && p10k segment -f yellow -t '⛓'
 }
 ```
 
@@ -206,7 +212,7 @@ Add to `~/.zshrc` (after `source $ZSH/oh-my-zsh.sh`):
 
 ```zsh
 function _wt_link_prompt() {
-  [[ -f .worktree-link-state ]] && echo '⛓ '
+  wt-link starship 2>/dev/null
 }
 
 RPROMPT='$(_wt_link_prompt)'"$RPROMPT"
@@ -220,7 +226,7 @@ Add to `~/.bashrc` or `~/.bash_profile`:
 
 ```bash
 _wt_link_prompt() {
-  [[ -f .worktree-link-state ]] && printf '⛓ '
+  wt-link starship 2>/dev/null
 }
 
 PS1='$(_wt_link_prompt)'"$PS1"

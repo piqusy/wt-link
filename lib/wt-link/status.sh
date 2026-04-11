@@ -5,11 +5,16 @@
 #   (set by bin/wt-link before dispatch)
 
 # cmd_starship — called by Starship custom module; must be fast (no jq/find).
-# Starship's detect_files=".worktree-link-state" gates invocation, so we only
-# run when the state file is present in the current directory.
+# Checks the registry to see if the current directory is the active worktree
+# for any registered site. REGISTRY_DIR is set before the early dispatch block
+# in bin/wt-link so it is available here without project resolution.
 cmd_starship() {
-    local state_file=".worktree-link-state"
-    [[ -f "$state_file" ]] && printf '⛓' || true
+    local cwd
+    cwd="$(pwd)"
+    for f in "$REGISTRY_DIR"/*.active; do
+        [[ -f "$f" ]] || continue
+        grep -q "^active=$cwd$" "$f" 2>/dev/null && { printf '⛓'; return; }
+    done
 }
 
 cmd_status() {
