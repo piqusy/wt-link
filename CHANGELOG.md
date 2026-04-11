@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.5.1] — 2026-04-12
+
+### Fixed
+- `wt-link starship` now checks the registry (`~/.config/wt-link/*.active`) instead of looking for `.worktree-link-state` in the current directory — the file no longer lives in the worktree since v2.5.0.
+- README prompt integration examples updated accordingly (Starship `detect_files` removed; P10k / Oh My Zsh / Bash PS1 snippets updated to call `wt-link starship` directly).
+
 ## [2.5.0] — 2026-04-12
 
 ### Added
