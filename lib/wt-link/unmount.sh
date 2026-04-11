@@ -63,71 +63,82 @@ cmd_unmount() {
     local removed_plugins=0
     if [[ -d "$plugins_dir" ]]; then
         local canonical_plugins="$CANONICAL_WP_CONTENT/plugins"
+
+        # Pre-count so we can show a useful spinner label
         for entry in "$plugins_dir"/*; do
             local entry_name
             entry_name="$(basename "$entry")"
-            # Only remove if the same name exists in canonical (i.e. it was linked/copied from there)
             [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
-            # Remove symlinks (default mount) and hard-copy dirs (--hard-copy mount)
-            # Skip real git-tracked directories that have no corresponding state key
             if [[ -L "$entry" ]]; then
-                rm "$entry"
                 removed_plugins=$((removed_plugins + 1))
-            elif [[ -d "$entry" && $has_state -eq 1 ]]; then
-                # Only remove dirs that mount actually created (legacy hard-copy or explicit --hard-copy)
-                if [[ "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
-                    rm -rf "$entry"
-                    removed_plugins=$((removed_plugins + 1))
-                fi
+            elif [[ -d "$entry" && $has_state -eq 1 && "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
+                removed_plugins=$((removed_plugins + 1))
             fi
         done
+
+        if [[ $removed_plugins -gt 0 ]]; then
+            _unmount_remove_plugins() {
+                for entry in "$plugins_dir"/*; do
+                    local entry_name
+                    entry_name="$(basename "$entry")"
+                    [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
+                    if [[ -L "$entry" ]]; then
+                        rm "$entry"
+                    elif [[ -d "$entry" && $has_state -eq 1 ]]; then
+                        if [[ "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
+                            rm -rf "$entry"
+                        fi
+                    fi
+                done
+            }
+            run_with_spinner "Removing $removed_plugins plugin links/copies…" _unmount_remove_plugins
+        fi
     fi
-    success "Removed $removed_plugins plugin copies/links"
+    success "Removed $removed_plugins plugin links/copies"
 
     # 4. Remove vendor/, node_modules, and built public/ from Eightshift packages ─
-    for pkg in $(find_eightshift_packages); do
-        local pkg_basename
-        pkg_basename="$(basename "$pkg")"
-        for vendor_dir in vendor vendor-prefixed; do
-            local vendor_dest="$pkg/$vendor_dir"
-            if [[ -L "$vendor_dest" ]]; then
-                rm "$vendor_dest"
-                success "  $vendor_dir/ symlink removed: $pkg_basename"
-            elif [[ -d "$vendor_dest" && $has_state -eq 1 && "$(state_get "vendor_copied_${pkg_basename}_${vendor_dir}")" == "1" ]]; then
-                rm -rf "$vendor_dest"
-                success "  $vendor_dir/ removed: $pkg_basename"
+    _unmount_remove_packages() {
+        for pkg in $(find_eightshift_packages); do
+            local pkg_basename
+            pkg_basename="$(basename "$pkg")"
+            for vendor_dir in vendor vendor-prefixed; do
+                local vendor_dest="$pkg/$vendor_dir"
+                if [[ -L "$vendor_dest" ]]; then
+                    rm "$vendor_dest"
+                elif [[ -d "$vendor_dest" && $has_state -eq 1 && "$(state_get "vendor_copied_${pkg_basename}_${vendor_dir}")" == "1" ]]; then
+                    rm -rf "$vendor_dest"
+                fi
+            done
+            local node_modules_dest="$pkg/node_modules"
+            if [[ -L "$node_modules_dest" || -d "$node_modules_dest" ]]; then
+                rm -rf "$node_modules_dest"
+            fi
+            if [[ $has_state -eq 1 && "$(state_get "public_built_$pkg_basename")" == "1" ]]; then
+                local public_dest="$pkg/public"
+                [[ -d "$public_dest" ]] && rm -rf "$public_dest"
             fi
         done
-        local node_modules_dest="$pkg/node_modules"
-        if [[ -L "$node_modules_dest" || -d "$node_modules_dest" ]]; then
-            rm -rf "$node_modules_dest"
-            success "  node_modules removed: $pkg_basename"
-        fi
-        # Remove public/ if mount built it (state key present)
-        if [[ $has_state -eq 1 && "$(state_get "public_built_$pkg_basename")" == "1" ]]; then
-            local public_dest="$pkg/public"
-            if [[ -d "$public_dest" ]]; then
-                rm -rf "$public_dest"
-                success "  public/ removed: $pkg_basename"
-            fi
-        fi
-    done
+    }
+    run_with_spinner "Removing Eightshift package artifacts…" _unmount_remove_packages
+    success "Eightshift package artifacts removed"
 
     # 5. Remove WP core files — only if this script installed them ───────────────
     if [[ $has_state -eq 1 && "$(state_get wp_core_installed)" == "1" ]]; then
-        step "Removing WP core files..."
-        for d in wp-admin wp-includes; do
-            [[ -d "$WORKTREE_ROOT/$d" ]] && rm -rf "${WORKTREE_ROOT:?}/$d"
-        done
-        local wp_root_files=(
-            index.php wp-activate.php wp-blog-header.php wp-comments-post.php
-            wp-cron.php wp-links-opml.php wp-load.php wp-login.php wp-mail.php
-            wp-settings.php wp-signup.php wp-trackback.php xmlrpc.php
-            wp-config-sample.php license.txt readme.html
-        )
-        for f in "${wp_root_files[@]}"; do
-            [[ -f "$WORKTREE_ROOT/$f" ]] && rm "$WORKTREE_ROOT/$f"
-        done
+        _unmount_remove_wp_core() {
+            for d in wp-admin wp-includes; do
+                [[ -d "$WORKTREE_ROOT/$d" ]] && rm -rf "${WORKTREE_ROOT:?}/$d"
+            done
+            local wp_root_files=(
+                index.php wp-activate.php wp-blog-header.php wp-comments-post.php
+                wp-cron.php wp-links-opml.php wp-load.php wp-login.php wp-mail.php
+                wp-settings.php wp-signup.php wp-trackback.php xmlrpc.php
+                wp-config-sample.php license.txt readme.html
+            )
+            for f in "${wp_root_files[@]}"; do
+                [[ -f "$WORKTREE_ROOT/$f" ]] && rm "$WORKTREE_ROOT/$f"
+            done
+        }
+        run_with_spinner "Removing WP core files…" _unmount_remove_wp_core
         success "WP core files removed"
     elif [[ $has_state -eq 0 ]]; then
         warn "WP core files left in place (no state file — manual cleanup required if needed)"

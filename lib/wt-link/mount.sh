@@ -137,8 +137,6 @@ _mount_plugins() {
     fi
 
     local new_count=0
-    local mode_label
-    mode_label="$([ "$HARD_COPY" -eq 1 ] && echo "hard-copying" || echo "symlinking")"
 
     if [[ "$HARD_COPY" -eq 1 ]]; then
         # Parallel hard-copy: build a list of "src:::dest" pairs then xargs -P8
@@ -156,12 +154,15 @@ _mount_plugins() {
         done
 
         if [[ $new_count -gt 0 ]]; then
-            # Each line is "src:::dest"; xargs splits on newline, runs cp -Rl in parallel
-            xargs -P8 -I'{}' bash -c '
-                src="${1%%:::*}"; dest="${1##*:::}"
-                if [[ -d "$src" ]]; then cp -Rl "$src" "$dest"
-                else cp -l "$src" "$dest"; fi
-            ' _ '{}' < "$tmp_pairs" || warn "  Some plugins failed to copy — check above"
+            run_with_spinner "Hard-copying $new_count plugins (parallel)…" \
+                bash -c '
+                    xargs -P8 -I"{}" bash -c '"'"'
+                        src="${1%%:::*}"; dest="${1##*:::}"
+                        if [[ -d "$src" ]]; then cp -Rl "$src" "$dest"
+                        else cp -l "$src" "$dest"; fi
+                    '"'"' _ "{}" < "$1"
+                ' _ "$tmp_pairs" \
+                || warn "  Some plugins failed to copy — check above"
 
             # Record each hard-copied plugin in state for unmount
             while IFS= read -r pair; do
@@ -173,7 +174,8 @@ _mount_plugins() {
         rm -f "$tmp_pairs"
         success "Plugins: $new_count newly hard-copied (parallel)"
     else
-        # Default: symlink each plugin
+        # Default: symlink each plugin — fast enough to not need a spinner
+        step "Symlinking $total untracked plugins…"
         for plugin_path in "${plugins[@]}"; do
             local plugin_name dest
             plugin_name="$(basename "$plugin_path")"

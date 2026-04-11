@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.0] — 2026-04-11
+
+### Added
+- Spinner for `--hard-copy` plugin copy in `mount` — "Hard-copying N plugins (parallel)…" shown while `xargs -P8` runs.
+- Spinner for plugin removal in `unmount` — "Removing N plugin links/copies…" (pre-counted, so label is accurate).
+- Spinner for Eightshift package artifact cleanup in `unmount` — "Removing Eightshift package artifacts…" covers `vendor/`, `node_modules/`, and `public/` removal.
+- Spinner for WP core file removal in `unmount` — replaces the `step` label, covers `rm -rf wp-admin wp-includes` and root file cleanup.
+
+### Changed
+- `mount` symlink plugin path now shows a `step` label before the loop instead of silent operation.
+
 ## [2.1.0] — 2026-04-11
 
 ### Added
