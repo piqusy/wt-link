@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.5.0] — 2026-04-12
+
+### Added
+- `wt-link list` — prints a table of all registered sites with their active worktree and domain; dispatches before project resolution so it works from any directory.
+- `--yes / -y` flag for `mount` — silently proceeds past the domain-conflict prompt with no output, safe for non-interactive hook contexts (e.g. Worktrunk `post-start` hooks with no TTY).
+- ERR trap rollback in `mount` — any step failure triggers an automatic `unmount`, leaving the worktree clean instead of half-mounted. Prints the previously-active worktree path and the command to restore it.
+
+### Changed
+- `mount` parallel theme builds — Eightshift builds now run in three phases: vendor/composer (sequential), `pm install` (sequential, shared cache), `pm run build` (parallel per theme). Saves the full build time of every theme after the first.
+- `--force` domain-conflict UX — suppresses the multi-line warning block; replaced with a compact one-line step notice.
+- State file moved from `$WORKTREE_ROOT/.worktree-link-state` to `~/.config/wt-link/<site>.<worktree-basename>.state`. Survives `git worktree remove --force`. Existing state files are migrated automatically on next mount.
+
+### Fixed
+- `unmount` no longer removes plugin symlinks that were not created by wt-link. Only symlinks tracked via `plugin_linked_<name>=1` state key are removed; manually-created symlinks are left untouched. Falls back to the previous remove-all behaviour when no state file exists.
+
 ## [2.4.2] — 2026-04-11
 
 ### Changed
