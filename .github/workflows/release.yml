@@ -25,14 +25,17 @@ jobs:
         run: |
           sed -i "s/^WT_LINK_VERSION=.*/WT_LINK_VERSION=\"${{ steps.version.outputs.version }}\"/" bin/wt-link
 
-      - name: Create release archive
+      - name: Create release tarball
         run: |
-          cp bin/wt-link wt-link
-          sha256sum wt-link > wt-link.sha256
+          ARCHIVE="wt-link-${{ steps.version.outputs.version }}.tar.gz"
+          tar -czf "$ARCHIVE" bin/wt-link lib/wt-link/
+          sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+        id: archive
 
       - name: Compute SHA256
         id: sha256
-        run: echo "hash=$(sha256sum wt-link | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+        run: echo "hash=$(sha256sum "${{ steps.archive.outputs.archive }}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -46,24 +49,23 @@ jobs:
             brew install piqusy/tap/wt-link
             ```
 
-            Or via curl:
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
-            ```
-
-            Or install a specific version:
-            ```bash
-            WT_LINK_VERSION=${{ github.ref_name }} curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
-            ```
-
             ### Manual download
 
-            Download `wt-link` below, make it executable, and place it on your `$PATH`.
+            Download `wt-link-${{ steps.version.outputs.version }}.tar.gz` below, then:
 
-            Verify checksum: `sha256sum -c wt-link.sha256`
+            ```bash
+            tar -xzf wt-link-${{ steps.version.outputs.version }}.tar.gz
+            sudo cp bin/wt-link /usr/local/bin/
+            sudo cp -r lib/wt-link /usr/local/lib/
+            ```
+
+            Verify checksum:
+            ```bash
+            sha256sum -c wt-link-${{ steps.version.outputs.version }}.tar.gz.sha256
+            ```
           files: |
-            wt-link
-            wt-link.sha256
+            ${{ steps.archive.outputs.archive }}
+            ${{ steps.archive.outputs.archive }}.sha256
           generate_release_notes: true
 
   update-homebrew-tap:
@@ -83,18 +85,18 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Download release binary
+      - name: Download release tarball
         run: |
           gh release download "${{ github.ref_name }}" \
             --repo piqusy/wt-link \
-            --pattern "wt-link" \
-            --output wt-link
+            --pattern "wt-link-*.tar.gz" \
+            --output "wt-link-${{ steps.version.outputs.version }}.tar.gz"
         env:
           GH_TOKEN: ${{ github.token }}
 
       - name: Compute SHA256
         id: sha256
-        run: echo "hash=$(sha256sum wt-link | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+        run: echo "hash=$(sha256sum "wt-link-${{ steps.version.outputs.version }}.tar.gz" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Update formula
         run: |
@@ -102,7 +104,7 @@ jobs:
           SHA256="${{ steps.sha256.outputs.hash }}"
           FORMULA="homebrew-tap/Formula/wt-link.rb"
 
-          sed -i "s|releases/download/v.*/wt-link\"|releases/download/v${VERSION}/wt-link\"|" "$FORMULA"
+          sed -i "s|releases/download/v.*/wt-link-.*\.tar\.gz\"|releases/download/v${VERSION}/wt-link-${VERSION}.tar.gz\"|" "$FORMULA"
           sed -i "s/sha256 \".*\"/sha256 \"${SHA256}\"/" "$FORMULA"
           sed -i "s/version \".*\"/version \"${VERSION}\"/" "$FORMULA"
 

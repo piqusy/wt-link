@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.0.0] — 2026-04-11
+
+### Breaking Changes
+- **Modular architecture** — the single-file `bin/wt-link` script has been split into a thin entry point + nine library modules under `lib/wt-link/`. Installations from the old single-file release no longer apply; install via Homebrew or the new `.tar.gz` tarball.
+- **No more `install.sh`** — the curl-based installer has been removed. Install via Homebrew (`brew install piqusy/tap/wt-link`) or manually from the release tarball.
+- **Release artifact is now a tarball** — `wt-link-<version>.tar.gz` contains `bin/wt-link` + `lib/wt-link/*.sh`. The bare `wt-link` binary artifact is no longer published.
+
+### Added
+- `lib/wt-link/ui.sh` — output helpers: `log`, `success`, `warn`, `error`, `step`
+- `lib/wt-link/utils.sh` — `require_cmd`, `require_pm`, `wp_clean`
+- `lib/wt-link/project.sh` — `find_project_root`, `find_eightshift_packages`, `find_untracked_plugins`, `detect_package_manager`
+- `lib/wt-link/state.sh` — state file and registry read/write helpers
+- `lib/wt-link/runtime.sh` — `run_pm_install`, `run_pm_build`, `run_with_spinner`, `wait_for_herd`
+- `lib/wt-link/mount.sh` — `cmd_mount` decomposed into 8 private `_mount_*` sub-functions for readability
+- `lib/wt-link/unmount.sh` — `cmd_unmount`
+- `lib/wt-link/status.sh` — `cmd_status`
+- `lib/wt-link/rebuild.sh` — `cmd_rebuild_composer`, `cmd_rebuild_node`
+- **Development layout** — `bin/wt-link` automatically resolves `LIB_DIR` relative to the script directory, so the tool runs from a cloned repo without any install step.
+
+### Changed
+- `bin/wt-link` is now ~220 lines (down from ~700): shebang, colour vars, LIB_DIR resolution, module sourcing, arg parsing, project resolution, and dispatch only.
+- Build step now always builds for themes, always skips for plugins (previously skipped if `public/manifest.json` existed, risking stale assets).
+- `herd link` now removes the existing Herd symlink before re-linking, fixing silent no-op when switching between worktrees for the same site name.
+- Untracked plugins are hard-copied (`cp -Rl`) from the canonical site instead of symlinked, ensuring filesystem isolation between worktrees.
+
 ## [1.7.1] — 2026-04-10
 
 ### Fixed

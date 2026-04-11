@@ -13,27 +13,14 @@ brew tap piqusy/tap
 brew install wt-link
 ```
 
-### curl
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
-```
-
-Installs to `~/.local/bin/wt-link`. Set `WT_LINK_INSTALL_DIR` to override.
-
-### Install a specific version
-
-```bash
-WT_LINK_VERSION=v1.0.0 curl -fsSL https://raw.githubusercontent.com/piqusy/wt-link/main/install.sh | bash
-```
-
 ### Manual
 
-Download the `wt-link` binary from [Releases](https://github.com/piqusy/wt-link/releases), make it executable, and place it on your `$PATH`:
+Download `wt-link-<version>.tar.gz` from [Releases](https://github.com/piqusy/wt-link/releases), then:
 
 ```bash
-chmod +x wt-link
-mv wt-link ~/.local/bin/wt-link
+tar -xzf wt-link-<version>.tar.gz
+sudo cp bin/wt-link /usr/local/bin/
+sudo cp -r lib/wt-link /usr/local/lib/
 ```
 
 ## Requirements
@@ -50,15 +37,18 @@ mv wt-link ~/.local/bin/wt-link
 ## Usage
 
 ```
-wt-link <command> [--cwd PATH]
+wt-link <command> [--cwd PATH] [--force]
 
 Commands:
-  mount    Set up a git worktree as a fully working local Herd site
-  unmount  Tear down and restore the canonical site
-  status   Show current link status
+  mount             Set up a git worktree as a fully working local Herd site
+  unmount           Tear down and restore the canonical site
+  status            Show current link status
+  rebuild-composer  Re-run composer install for all Eightshift packages
+  rebuild-node      Re-run <pm> install + build for all Eightshift packages
 
 Options:
   --cwd PATH   Run against a specific worktree directory (default: current dir)
+  --force      Force re-mount even if already mounted
 
 Environment:
   CANONICAL_SITE   Override the canonical site path
@@ -77,11 +67,20 @@ wt-link mount --cwd ~/Sites/myproject.feature-branch
 # Override the canonical site location
 CANONICAL_SITE=~/Sites/myproject wt-link mount
 
+# Force re-mount (e.g. after canonical site deps changed)
+wt-link mount --force
+
 # Tear down
 wt-link unmount
 
 # Check status
 wt-link status
+
+# Rebuild PHP deps after a composer.json change
+wt-link rebuild-composer
+
+# Rebuild JS assets after a package.json change
+wt-link rebuild-node
 ```
 
 ### Fish shell aliases
@@ -92,25 +91,35 @@ If you use Fish, add these to your config:
 alias wlm 'wt-link mount'
 alias wlu 'wt-link unmount'
 alias wls 'wt-link status'
+alias wlrc 'wt-link rebuild-composer'
+alias wlrn 'wt-link rebuild-node'
 ```
 
 ## What `mount` does
 
 1. **WP core** — Downloads WordPress (version from `setup.json`) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
-3. **Plugins** — Symlinks git-untracked plugins from the canonical site
+3. **Plugins** — Symlinks tracked plugins; hard-copies untracked plugins from the canonical site
 4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
 5. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
    - Symlinks `vendor/` and `vendor_prefixed/` from the canonical site (falls back to `composer install` if canonical has none)
    - Runs `<pm> install` — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
-   - Runs `<pm> run build` (or copies pre-built `public/` from canonical)
+   - Runs `<pm> run build` for themes; skips build for plugins
 6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`
 
 A `.worktree-link-state` file tracks everything created so `unmount` can reverse it precisely.
 
 ## What `unmount` does
 
-Reverses all of the above: removes symlinks, WP core files, wp-config, restores the Herd link to the canonical site, and deletes the state file.
+Reverses all of the above: removes symlinks, hard-copied plugin directories, WP core files, wp-config, restores the Herd link to the canonical site, and deletes the state file.
+
+## What `rebuild-composer` does
+
+Re-runs `composer install` for every Eightshift package in the worktree. Useful after pulling changes that add or update PHP dependencies.
+
+## What `rebuild-node` does
+
+Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the worktree. Useful after pulling changes that add or update JS dependencies or after a failed build.
 
 ## Configuration
 
@@ -126,6 +135,33 @@ Reverses all of the above: removes symlinks, WP core files, wp-config, restores 
 ```
 
 This is the standard [Eightshift](https://eightshift.com) project format.
+
+## Development
+
+The tool is split into a thin entry point and nine library modules:
+
+```
+bin/
+  wt-link          # Entry point: arg parsing, project resolution, dispatch
+lib/wt-link/
+  ui.sh            # log/success/warn/error/step output helpers
+  utils.sh         # require_cmd, require_pm, wp_clean
+  project.sh       # find_project_root, detect_package_manager, find_* helpers
+  state.sh         # State file and registry read/write helpers
+  runtime.sh       # run_pm_install, run_pm_build, run_with_spinner, wait_for_herd
+  mount.sh         # cmd_mount + 8 private _mount_* sub-functions
+  unmount.sh       # cmd_unmount
+  status.sh        # cmd_status
+  rebuild.sh       # cmd_rebuild_composer, cmd_rebuild_node
+```
+
+To run from source without installing:
+
+```bash
+git clone https://github.com/piqusy/wt-link
+cd wt-link
+./bin/wt-link --help
+```
 
 ## License
 
