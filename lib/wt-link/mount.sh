@@ -38,13 +38,15 @@ _mount_herd_link() {
     local reg_active
     reg_active="$(registry_get active)"
     if [[ -n "$reg_active" && "$reg_active" != "$WORKTREE_ROOT" ]]; then
-        echo ""
-        warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
-        echo -e "  Active: $reg_active"
-        echo ""
         if [[ $FORCE -eq 1 ]]; then
-            warn "  --force: switching domain to this worktree"
+            step "Switching domain from $reg_active (--force)"
+        elif [[ $YES -eq 1 ]]; then
+            : # Silent — non-interactive hook context; proceed without any output
         else
+            echo ""
+            warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
+            echo -e "  Active: $reg_active"
+            echo ""
             printf "  Switch domain to this worktree? [y/N] "
             local answer
             read -r answer

@@ -212,9 +212,11 @@ COMMAND="${1:-help}"
 shift 2>/dev/null || true
 
 FORCE=0
+YES=0
 HARD_COPY=0
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
+    [[ "$arg" == "--yes"   || "$arg" == "-y" ]] && YES=1
     [[ "$arg" == "--hard-copy" ]] && HARD_COPY=1
 done
 
