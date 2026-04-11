@@ -322,6 +322,24 @@ _mount_verify() {
 # ── Public dispatcher ─────────────────────────────────────────────────────────
 
 cmd_mount() {
+    # Capture previously-active worktree before we displace it, so the ERR trap
+    # can tell the user how to restore it if the mount fails mid-way.
+    local _prev_active
+    _prev_active="$(registry_get active)"
+
+    trap '
+        local _ec=$?
+        echo ""
+        warn "Mount failed (exit $_ec) — rolling back…"
+        echo ""
+        cmd_unmount
+        if [[ -n "$_prev_active" && "$_prev_active" != "$WORKTREE_ROOT" ]]; then
+            echo ""
+            warn "Domain was previously mounted to: $_prev_active"
+            echo -e "  To restore it: ${BOLD}wt-link mount --cwd $_prev_active${RESET}"
+            echo ""
+        fi
+    ' ERR
     _mount_validate
     _mount_herd_link
     _mount_wp_core
@@ -330,4 +348,5 @@ cmd_mount() {
     _mount_uploads
     _mount_eightshift_pkgs
     _mount_verify
+    trap - ERR
 }
