@@ -86,6 +86,8 @@ source "$LIB_DIR/unmount.sh"
 source "$LIB_DIR/status.sh"
 # shellcheck source=../lib/wt-link/rebuild.sh
 source "$LIB_DIR/rebuild.sh"
+# shellcheck source=../lib/wt-link/list.sh
+source "$LIB_DIR/list.sh"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # ARGUMENT PARSING
@@ -136,6 +138,10 @@ case "${1:-help}" in
         ;;
     starship)
         cmd_starship
+        exit 0
+        ;;
+    list)
+        cmd_list
         exit 0
         ;;
 esac
@@ -232,6 +238,7 @@ case "$COMMAND" in
     mount)            cmd_mount ;;
     unmount)          cmd_unmount ;;
     status)           cmd_status ;;
+    list)             cmd_list ;;
     starship)         cmd_starship ;;
     rebuild-composer) cmd_rebuild_composer ;;
     rebuild-node)     cmd_rebuild_node ;;
