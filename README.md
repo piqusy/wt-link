@@ -163,9 +163,13 @@ cd wt-link
 ./bin/wt-link --help
 ```
 
-## Starship prompt indicator
+## Shell prompt integration
 
-Add a `⛓` symbol to your shell prompt when inside a mounted worktree. Add this to your `~/.config/starship.toml`:
+Show a `⛓` symbol in your prompt when inside a mounted worktree.
+
+### Starship
+
+Add to `~/.config/starship.toml`:
 
 ```toml
 [custom.wt-link]
@@ -175,6 +179,51 @@ detect_files = [".worktree-link-state"]
 format = "[$output]($style) "
 style = "bold yellow"
 ignore_timeout = true
+```
+
+### Powerlevel10k
+
+Add to `~/.p10k.zsh`:
+
+```zsh
+function prompt_wt_link() {
+  [[ -f .worktree-link-state ]] || return
+  p10k segment -f yellow -t '⛓'
+}
+```
+
+Then add `wt_link` to your prompt elements in the same file:
+
+```zsh
+POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(... wt_link ...)
+# or on the right:
+# POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(... wt_link ...)
+```
+
+### Oh My Zsh
+
+Add to `~/.zshrc` (after `source $ZSH/oh-my-zsh.sh`):
+
+```zsh
+function _wt_link_prompt() {
+  [[ -f .worktree-link-state ]] && echo '⛓ '
+}
+
+RPROMPT='$(_wt_link_prompt)'"$RPROMPT"
+```
+
+Or add it to the left prompt by modifying your theme's `PROMPT` variable instead.
+
+### Plain Bash / PS1
+
+Add to `~/.bashrc` or `~/.bash_profile`:
+
+```bash
+_wt_link_prompt() {
+  [[ -f .worktree-link-state ]] && printf '⛓ '
+}
+
+PS1='$(_wt_link_prompt)'"$PS1"
 ```
 
 ## License
