@@ -163,6 +163,19 @@ cd wt-link
 ./bin/wt-link --help
 ```
 
+## Starship prompt indicator
+
+Add a `⛓` symbol to your shell prompt when inside a mounted worktree. Add this to your `~/.config/starship.toml`:
+
+```toml
+[custom.wt-link]
+command = "wt-link starship"
+when = true
+detect_files = [".worktree-link-state"]
+format = "[$output]($style) "
+style = "bold yellow"
+```
+
 ## License
 
 MIT © Ivan Ramljak

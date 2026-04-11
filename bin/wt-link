@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.3.0"
+WT_LINK_VERSION="2.4.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -91,7 +91,7 @@ source "$LIB_DIR/rebuild.sh"
 # ARGUMENT PARSING
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Show help / version before any project resolution
+# Show help / version / starship before any project resolution
 case "${1:-help}" in
     help|--help|-h)
         echo "Usage: wt-link <command> [--cwd PATH]"
@@ -102,6 +102,7 @@ case "${1:-help}" in
         echo "  status            Show current link status"
         echo "  rebuild-composer  Delete vendor/ + vendor-prefixed/ and re-run composer install"
         echo "  rebuild-node      Delete node_modules/ + public/ and rebuild JS/CSS assets"
+        echo "  starship          Output ⛓ if cwd is a mounted worktree (for Starship prompt)"
         echo ""
         echo "Options:"
         echo "  --cwd PATH   Run against a specific worktree directory (default: current directory)"
@@ -128,6 +129,10 @@ case "${1:-help}" in
         ;;
     --version|-v)
         echo "wt-link $WT_LINK_VERSION"
+        exit 0
+        ;;
+    starship)
+        cmd_starship
         exit 0
         ;;
 esac
@@ -217,6 +222,7 @@ case "$COMMAND" in
     mount)            cmd_mount ;;
     unmount)          cmd_unmount ;;
     status)           cmd_status ;;
+    starship)         cmd_starship ;;
     rebuild-composer) cmd_rebuild_composer ;;
     rebuild-node)     cmd_rebuild_node ;;
     *)

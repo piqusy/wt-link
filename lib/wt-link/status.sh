@@ -1,8 +1,16 @@
 # shellcheck shell=bash
-# status.sh — cmd_status for wt-link.
+# status.sh — cmd_status and cmd_starship for wt-link.
 # Globals used: SITE_NAME, WORKTREE_ROOT, WP_CONTENT, STATE_FILE,
 #   REGISTRY_FILE, WP_CORE_MARKER, BOLD, GREEN, YELLOW, RED, RESET
 #   (set by bin/wt-link before dispatch)
+
+# cmd_starship — called by Starship custom module; must be fast (no jq/find).
+# Starship's detect_files=".worktree-link-state" gates invocation, so we only
+# run when the state file is present in the current directory.
+cmd_starship() {
+    local state_file=".worktree-link-state"
+    [[ -f "$state_file" ]] && printf '⛓' || true
+}
 
 cmd_status() {
     echo ""
