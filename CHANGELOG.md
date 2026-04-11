@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.3.0] — 2026-04-11
+
+### Changed
+- Eightshift plugins now skip `npm install` and `build` entirely during `mount` — plugins ship pre-built, so only composer deps are set up.
+
 ## [2.2.0] — 2026-04-11
 
 ### Added

@@ -279,24 +279,22 @@ _mount_eightshift_pkgs() {
             fi
         fi
 
-        # node_modules — always rebuild so the worktree gets its own fresh deps
-        local pm
-        pm="$(detect_package_manager "$pkg")"
-        require_pm "$pm"
-        local node_modules_dest="$pkg/node_modules"
-        [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
-        run_with_spinner "  $pm install…" \
-            run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
-        success "  node_modules: installed via $pm"
-
-        # build — always run for themes; plugins ship pre-built
+        # node_modules + build — themes only; plugins ship pre-built
         if [[ "$pkg_type" == "theme" ]]; then
+            local pm
+            pm="$(detect_package_manager "$pkg")"
+            require_pm "$pm"
+            local node_modules_dest="$pkg/node_modules"
+            [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
+            run_with_spinner "  $pm install…" \
+                run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
+            success "  node_modules: installed via $pm"
             run_with_spinner "  $pm run build…" \
                 run_pm_build "$pm" "$pkg" || warn "  build had errors — check manually"
             state_set "public_built_$pkg_name" "1"
             success "  build: done"
         else
-            success "  build: skipped (plugin)"
+            success "  node_modules + build: skipped (plugin ships pre-built)"
         fi
     done
 }
