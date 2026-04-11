@@ -70,7 +70,10 @@ cmd_unmount() {
             entry_name="$(basename "$entry")"
             [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
             if [[ -L "$entry" ]]; then
-                removed_plugins=$((removed_plugins + 1))
+                # Only count symlinks that wt-link created (tracked in state), or all if no state file (legacy)
+                if [[ $has_state -eq 0 || "$(state_get "plugin_linked_$entry_name")" == "1" ]]; then
+                    removed_plugins=$((removed_plugins + 1))
+                fi
             elif [[ -d "$entry" && $has_state -eq 1 && "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
                 removed_plugins=$((removed_plugins + 1))
             fi
@@ -83,7 +86,12 @@ cmd_unmount() {
                     entry_name="$(basename "$entry")"
                     [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
                     if [[ -L "$entry" ]]; then
-                        rm "$entry"
+                        # Remove only symlinks wt-link created; if no state file, fall back to removing all (legacy)
+                        if [[ $has_state -eq 1 && "$(state_get "plugin_linked_$entry_name")" == "1" ]]; then
+                            rm "$entry"
+                        elif [[ $has_state -eq 0 ]]; then
+                            rm "$entry"
+                        fi
                     elif [[ -d "$entry" && $has_state -eq 1 ]]; then
                         if [[ "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
                             rm -rf "$entry"
