@@ -19,7 +19,19 @@ _mount_validate() {
 
     [[ -d "$CANONICAL_SITE" ]] || error "Canonical site not found: $CANONICAL_SITE\nSet CANONICAL_SITE= env var to override."
 
+    # Migrate legacy state file from worktree root to registry dir (introduced in v1.8.0).
+    # Compute the canonical new path directly (STATE_FILE may already be overridden to the
+    # legacy path by the fallback in bin/wt-link, so we cannot rely on it here).
+    local new_state="$REGISTRY_DIR/$SITE_NAME.$(basename "$WORKTREE_ROOT").state"
+    local legacy_state="$WORKTREE_ROOT/.worktree-link-state"
+    if [[ -f "$legacy_state" && ! -f "$new_state" ]]; then
+        mkdir -p "$REGISTRY_DIR"
+        mv "$legacy_state" "$new_state"
+        STATE_FILE="$new_state"
+    fi
+
     # Ensure state file always exists after mount (even if everything was already present)
+    mkdir -p "$(dirname "$STATE_FILE")"
     touch "$STATE_FILE"
 }
 

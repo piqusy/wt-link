@@ -91,7 +91,10 @@ source "$LIB_DIR/rebuild.sh"
 # ARGUMENT PARSING
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Show help / version / starship before any project resolution
+# REGISTRY_DIR is user-global and needed by list/starship before project resolution
+REGISTRY_DIR="$HOME/.config/wt-link"
+
+# Show help / version / starship / list before any project resolution
 case "${1:-help}" in
     help|--help|-h)
         echo "Usage: wt-link <command> [--cwd PATH]"
@@ -199,10 +202,15 @@ CANONICAL_WP_CONTENT="$CANONICAL_SITE/wp-content"
 
 WP_CORE_MARKER="$WORKTREE_ROOT/wp-load.php"
 
-STATE_FILE="$WORKTREE_ROOT/.worktree-link-state"
-
-REGISTRY_DIR="$HOME/.config/wt-link"
+# REGISTRY_DIR already set before project resolution (for list/starship); keep assignments here
 REGISTRY_FILE="$REGISTRY_DIR/$SITE_NAME.active"
+STATE_FILE="$REGISTRY_DIR/$SITE_NAME.$(basename "$WORKTREE_ROOT").state"
+
+# Fall back to legacy state file location (pre-v1.8.0: stored inside the worktree)
+# so that existing mounted worktrees keep working before their next mount/migrate cycle
+if [[ ! -f "$STATE_FILE" && -f "$WORKTREE_ROOT/.worktree-link-state" ]]; then
+    STATE_FILE="$WORKTREE_ROOT/.worktree-link-state"
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COMMAND DISPATCH
