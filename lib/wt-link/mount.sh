@@ -230,25 +230,23 @@ _mount_eightshift_pkgs() {
 
     if [[ ${#packages[@]} -eq 0 ]]; then
         warn "No Eightshift packages found"
+        return 0
     fi
 
+    # Phase 1: vendor/composer setup — sequential (state writes + filesystem ops must not interleave)
+    local theme_pkgs=() theme_pms=()
     for pkg in "${packages[@]}"; do
-        local pkg_name
+        local pkg_name pkg_type canonical_pkg
         pkg_name="$(basename "$pkg")"
-        # Determine if pkg is a theme or plugin
-        local pkg_type="package"
+        pkg_type="package"
         [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
         [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
 
         log "Setting up $pkg_type: $pkg_name"
 
-        # Resolve canonical package path for vendor symlinking
-        local canonical_pkg=""
-        if [[ "$pkg_type" == "theme" ]]; then
-            canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
-        elif [[ "$pkg_type" == "plugin" ]]; then
-            canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
-        fi
+        canonical_pkg=""
+        [[ "$pkg_type" == "theme" ]] && canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
+        [[ "$pkg_type" == "plugin" ]] && canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
 
         # composer deps — hardlink-copy vendor/ and vendor-prefixed/ from canonical
         # (cp -Rl creates a hardlink tree: zero extra disk on APFS, but PHP __FILE__
@@ -293,24 +291,70 @@ _mount_eightshift_pkgs() {
             fi
         fi
 
-        # node_modules + build — themes only; plugins ship pre-built
         if [[ "$pkg_type" == "theme" ]]; then
             local pm
             pm="$(detect_package_manager "$pkg")"
             require_pm "$pm"
             local node_modules_dest="$pkg/node_modules"
             [[ -L "$node_modules_dest" ]] && rm "$node_modules_dest"
-            run_with_spinner "  $pm install…" \
-                run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
-            success "  node_modules: installed via $pm"
-            run_with_spinner "  $pm run build…" \
-                run_pm_build "$pm" "$pkg" || warn "  build had errors — check manually"
-            state_set "public_built_$pkg_name" "1"
-            success "  build: done"
+            theme_pkgs+=("$pkg")
+            theme_pms+=("$pm")
         else
             success "  node_modules + build: skipped (plugin ships pre-built)"
         fi
     done
+
+    if [[ ${#theme_pkgs[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    # Phase 2: node install — sequential (package managers share a global cache;
+    # concurrent writes can corrupt it for npm/yarn classic)
+    for i in "${!theme_pkgs[@]}"; do
+        local pkg="${theme_pkgs[$i]}" pm="${theme_pms[$i]}"
+        local pkg_name
+        pkg_name="$(basename "${theme_pkgs[$i]}")"
+        log "node_modules: $pkg_name"
+        run_with_spinner "  $pm install…" \
+            run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
+        success "  node_modules: installed via $pm"
+    done
+
+    # Phase 3: build — parallel (each theme compiles its own public/ from its own
+    # node_modules; no shared mutable state between themes)
+    local pids=() tmpfiles=() pkgnames=()
+    for i in "${!theme_pkgs[@]}"; do
+        local pkg="${theme_pkgs[$i]}" pm="${theme_pms[$i]}"
+        local pkg_name tmp
+        pkg_name="$(basename "$pkg")"
+        tmp="$(mktemp)"
+        tmpfiles+=("$tmp")
+        pkgnames+=("$pkg_name")
+        (
+            run_pm_build "$pm" "$pkg" \
+                && echo "OK: build done" \
+                || { echo "WARN: build had errors — check manually"; exit 1; }
+            state_set "public_built_$pkg_name" "1"
+        ) >"$tmp" 2>&1 &
+        pids+=($!)
+    done
+
+    local any_failed=0
+    for i in "${!pids[@]}"; do
+        echo ""
+        log "Build: ${pkgnames[$i]}"
+        if wait "${pids[$i]}"; then
+            cat "${tmpfiles[$i]}"
+            success "  ${pkgnames[$i]}: done"
+        else
+            cat "${tmpfiles[$i]}"
+            warn "  ${pkgnames[$i]}: build failed — check output above"
+            any_failed=1
+        fi
+        rm -f "${tmpfiles[$i]}"
+    done
+
+    [[ $any_failed -eq 0 ]] || return 1
 }
 
 _mount_verify() {
