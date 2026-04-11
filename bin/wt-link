@@ -19,6 +19,7 @@
 #
 # USAGE
 #   wt-link mount              Set up current worktree as the local dev site
+#   wt-link mount --hard-copy  Same but hard-copy untracked plugins (parallel cp -Rl)
 #   wt-link unmount            Tear it down and restore the canonical site
 #   wt-link status             Show what is linked / installed
 #   wt-link mount --cwd PATH   Mount a specific worktree directory
@@ -36,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.0.0"
+WT_LINK_VERSION="2.1.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -104,6 +105,7 @@ case "${1:-help}" in
         echo ""
         echo "Options:"
         echo "  --cwd PATH   Run against a specific worktree directory (default: current directory)"
+        echo "  --hard-copy  Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)"
         echo ""
         echo "Short aliases (fish):"
         echo "  wlm   wt-link mount"
@@ -119,6 +121,7 @@ case "${1:-help}" in
         echo "  wt-link mount"
         echo "  wt-link mount --cwd ~/Sites/myproject.feature-branch"
         echo "  CANONICAL_SITE=~/Sites/myproject wt-link mount"
+        echo "  wt-link mount --hard-copy"
         echo "  wt-link unmount"
         echo "  wt-link status"
         exit 0
@@ -204,8 +207,10 @@ COMMAND="${1:-help}"
 shift 2>/dev/null || true
 
 FORCE=0
+HARD_COPY=0
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
+    [[ "$arg" == "--hard-copy" ]] && HARD_COPY=1
 done
 
 case "$COMMAND" in

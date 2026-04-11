@@ -37,7 +37,7 @@ sudo cp -r lib/wt-link /usr/local/lib/
 ## Usage
 
 ```
-wt-link <command> [--cwd PATH] [--force]
+wt-link <command> [--cwd PATH] [--force] [--hard-copy]
 
 Commands:
   mount             Set up a git worktree as a fully working local Herd site
@@ -49,10 +49,7 @@ Commands:
 Options:
   --cwd PATH   Run against a specific worktree directory (default: current dir)
   --force      Force re-mount even if already mounted
-
-Environment:
-  CANONICAL_SITE   Override the canonical site path
-                   (default: ~/Sites/<site-name> from setup.json)
+  --hard-copy  Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
 ```
 
 ### Examples
@@ -69,6 +66,9 @@ CANONICAL_SITE=~/Sites/myproject wt-link mount
 
 # Force re-mount (e.g. after canonical site deps changed)
 wt-link mount --force
+
+# Hard-copy plugins instead of symlinking (filesystem-isolated, faster plugin activation)
+wt-link mount --hard-copy
 
 # Tear down
 wt-link unmount
@@ -99,7 +99,7 @@ alias wlrn 'wt-link rebuild-node'
 
 1. **WP core** — Downloads WordPress (version from `setup.json`) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
-3. **Plugins** — Symlinks tracked plugins; hard-copies untracked plugins from the canonical site
+3. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
 4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
 5. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
    - Symlinks `vendor/` and `vendor_prefixed/` from the canonical site (falls back to `composer install` if canonical has none)

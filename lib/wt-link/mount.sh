@@ -124,35 +124,71 @@ _mount_wp_config() {
 }
 
 _mount_plugins() {
-    step "Hard-copying untracked plugins from canonical site..."
-    local copied_count=0
-    while IFS= read -r plugin_path; do
-        [[ -z "$plugin_path" ]] && continue
-        local plugin_name
-        plugin_name="$(basename "$plugin_path")"
-        local dest="$WP_CONTENT/plugins/$plugin_name"
-
-        if [[ -e "$dest" || -L "$dest" ]]; then
-            : # already present (tracked in git, previously copied, or symlinked)
-        else
-            # Resolve symlinks in canonical before hardlink-copying
-            local real_src
-            real_src="$(realpath "$plugin_path" 2>/dev/null || echo "$plugin_path")"
-            if [[ -d "$real_src" ]]; then
-                cp -Rl "$real_src" "$dest" \
-                    || { warn "  Failed to copy $plugin_name — skipping"; continue; }
-            elif [[ -f "$real_src" ]]; then
-                cp -l "$real_src" "$dest" \
-                    || { warn "  Failed to copy $plugin_name — skipping"; continue; }
-            else
-                warn "  $plugin_name — source not found, skipping"
-                continue
-            fi
-            echo "    copied: $plugin_name"
-            copied_count=$((copied_count + 1))
-        fi
+    # Globals: HARD_COPY (0=symlink default, 1=parallel hard-copy)
+    local plugins=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && plugins+=("$p")
     done < <(find_untracked_plugins)
-    success "Plugins: $copied_count newly copied"
+
+    local total="${#plugins[@]}"
+    if [[ $total -eq 0 ]]; then
+        success "Plugins: nothing to link"
+        return 0
+    fi
+
+    local new_count=0
+    local mode_label
+    mode_label="$([ "$HARD_COPY" -eq 1 ] && echo "hard-copying" || echo "symlinking")"
+
+    if [[ "$HARD_COPY" -eq 1 ]]; then
+        # Parallel hard-copy: build a list of "src:::dest" pairs then xargs -P8
+        local tmp_pairs
+        tmp_pairs="$(mktemp)"
+        for plugin_path in "${plugins[@]}"; do
+            local plugin_name dest real_src
+            plugin_name="$(basename "$plugin_path")"
+            dest="$WP_CONTENT/plugins/$plugin_name"
+            [[ -e "$dest" || -L "$dest" ]] && continue
+            real_src="$(realpath "$plugin_path" 2>/dev/null || echo "$plugin_path")"
+            [[ -e "$real_src" ]] || continue
+            printf '%s:::%s\n' "$real_src" "$dest" >> "$tmp_pairs"
+            new_count=$((new_count + 1))
+        done
+
+        if [[ $new_count -gt 0 ]]; then
+            # Each line is "src:::dest"; xargs splits on newline, runs cp -Rl in parallel
+            xargs -P8 -I'{}' bash -c '
+                src="${1%%:::*}"; dest="${1##*:::}"
+                if [[ -d "$src" ]]; then cp -Rl "$src" "$dest"
+                else cp -l "$src" "$dest"; fi
+            ' _ '{}' < "$tmp_pairs" || warn "  Some plugins failed to copy — check above"
+
+            # Record each hard-copied plugin in state for unmount
+            while IFS= read -r pair; do
+                local dest_name
+                dest_name="$(basename "${pair##*:::}")"
+                state_set "plugin_copied_$dest_name" "1"
+            done < "$tmp_pairs"
+        fi
+        rm -f "$tmp_pairs"
+        success "Plugins: $new_count newly hard-copied (parallel)"
+    else
+        # Default: symlink each plugin
+        for plugin_path in "${plugins[@]}"; do
+            local plugin_name dest
+            plugin_name="$(basename "$plugin_path")"
+            dest="$WP_CONTENT/plugins/$plugin_name"
+            if [[ -e "$dest" || -L "$dest" ]]; then
+                : # already present
+            else
+                ln -s "$plugin_path" "$dest" \
+                    || { warn "  Failed to symlink $plugin_name — skipping"; continue; }
+                state_set "plugin_linked_$plugin_name" "1"
+                new_count=$((new_count + 1))
+            fi
+        done
+        success "Plugins: $new_count newly symlinked"
+    fi
 }
 
 _mount_uploads() {

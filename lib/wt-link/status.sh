@@ -83,17 +83,23 @@ cmd_status() {
 
     echo ""
     echo -e "${BOLD}Untracked plugins:${RESET}"
-    local plugin_count=0
+    local sym_count=0 copy_count=0
     if [[ -d "$WP_CONTENT/plugins" ]]; then
         local canonical_plugins="$CANONICAL_WP_CONTENT/plugins"
         for entry in "$WP_CONTENT/plugins"/*; do
             local entry_name
             entry_name="$(basename "$entry")"
             [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
-            { [[ -L "$entry" ]] || [[ -d "$entry" ]]; } && plugin_count=$((plugin_count + 1))
+            if [[ -L "$entry" ]]; then
+                sym_count=$((sym_count + 1))
+            elif [[ -d "$entry" ]]; then
+                copy_count=$((copy_count + 1))
+            fi
         done
     fi
-    echo "  $plugin_count copied"
+    [[ $sym_count -gt 0 ]] && echo "  $sym_count symlinked"
+    [[ $copy_count -gt 0 ]] && echo "  $copy_count hard-copied"
+    [[ $sym_count -eq 0 && $copy_count -eq 0 ]] && echo "  none"
 
     echo ""
     echo -e "${BOLD}State file:${RESET}"

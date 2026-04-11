@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.1.0] — 2026-04-11
+
+### Added
+- `--hard-copy` flag for `mount` — hard-copies untracked plugins in parallel using `cp -Rl` + `xargs -P8` instead of symlinking. Useful when plugins need filesystem isolation between worktrees (e.g. different plugin versions).
+- State key `plugin_copied_<name>=1` recorded per hard-copied plugin so `unmount` can remove exactly what mount created.
+
+### Changed
+- **Untracked plugins default reverted to symlinks** — `mount` now symlinks untracked plugins from the canonical site by default (consistent with uploads and pre-v2.0.0 behaviour). Use `--hard-copy` to opt into parallel hard-copies.
+- `status` now shows symlinked and hard-copied plugin counts separately.
+- `unmount` now only removes hard-copied plugin dirs when the corresponding `plugin_copied_*` state key is present, preventing accidental removal of real git-tracked directories.
+
 ## [2.0.0] — 2026-04-11
 
 ### Breaking Changes

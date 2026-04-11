@@ -58,7 +58,7 @@ cmd_unmount() {
         success "uploads symlink removed"
     fi
 
-    # 3. Remove untracked plugins (hardlink copies and any legacy symlinks) ──────
+    # 3. Remove untracked plugins (symlinks by default; hard-copy dirs when --hard-copy was used) ──
     local plugins_dir="$WP_CONTENT/plugins"
     local removed_plugins=0
     if [[ -d "$plugins_dir" ]]; then
@@ -66,19 +66,23 @@ cmd_unmount() {
         for entry in "$plugins_dir"/*; do
             local entry_name
             entry_name="$(basename "$entry")"
-            # Only remove if the same name exists in canonical (i.e. it was copied/linked from there)
+            # Only remove if the same name exists in canonical (i.e. it was linked/copied from there)
             [[ -e "$canonical_plugins/$entry_name" || -L "$canonical_plugins/$entry_name" ]] || continue
-            # Skip if it's tracked in git (real directory, not a copy/symlink we made)
+            # Remove symlinks (default mount) and hard-copy dirs (--hard-copy mount)
+            # Skip real git-tracked directories that have no corresponding state key
             if [[ -L "$entry" ]]; then
                 rm "$entry"
                 removed_plugins=$((removed_plugins + 1))
-            elif [[ -d "$entry" ]]; then
-                rm -rf "$entry"
-                removed_plugins=$((removed_plugins + 1))
+            elif [[ -d "$entry" && $has_state -eq 1 ]]; then
+                # Only remove dirs that mount actually created (legacy hard-copy or explicit --hard-copy)
+                if [[ "$(state_get "plugin_copied_$entry_name")" == "1" ]]; then
+                    rm -rf "$entry"
+                    removed_plugins=$((removed_plugins + 1))
+                fi
             fi
         done
     fi
-    success "Removed $removed_plugins plugin copies"
+    success "Removed $removed_plugins plugin copies/links"
 
     # 4. Remove vendor/, node_modules, and built public/ from Eightshift packages ─
     for pkg in $(find_eightshift_packages); do
