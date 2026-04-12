@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.2] — 2026-04-12
+
+### Fixed
+- `wt-link starship` is now a pure exit-code boolean — exit 0 if the current directory is a mounted worktree, exit 1 otherwise, no output. The display symbol is no longer baked into the package; define it in your shell prompt config instead.
+- Fixes `when = "wt-link starship"` in Starship always being true (previous implementation always exited 0).
+
+### Changed
+- README prompt integration examples updated for all four shells (Starship, Powerlevel10k, Oh My Zsh, Bash PS1) to use the exit-code pattern with user-defined symbols.
+
 ## [2.5.1] — 2026-04-12
 
 ### Fixed
