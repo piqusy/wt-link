@@ -175,13 +175,14 @@ Show a `⛓` symbol in your prompt when inside a mounted worktree.
 
 ### Starship
 
+`wt-link starship` is a pure exit-code boolean — exit 0 when the current directory is a mounted worktree, exit 1 otherwise. The symbol is defined entirely in your config.
+
 Add to `~/.config/starship.toml`:
 
 ```toml
 [custom.wt-link]
-command = "wt-link starship"
-when = true
-format = "[$output]($style) "
+when = "wt-link starship"
+format = "[⎇ linked]($style) "   # change symbol and label to taste
 style = "bold yellow"
 ignore_timeout = true
 ```
@@ -192,9 +193,8 @@ Add to `~/.p10k.zsh`:
 
 ```zsh
 function prompt_wt_link() {
-  local out
-  out="$(wt-link starship 2>/dev/null)"
-  [[ -n "$out" ]] && p10k segment -f yellow -t '⛓'
+  wt-link starship || return
+  p10k segment -f yellow -t '⎇'   # change symbol to taste
 }
 ```
 
@@ -212,7 +212,7 @@ Add to `~/.zshrc` (after `source $ZSH/oh-my-zsh.sh`):
 
 ```zsh
 function _wt_link_prompt() {
-  wt-link starship 2>/dev/null
+  wt-link starship && echo '⎇ '   # change symbol to taste
 }
 
 RPROMPT='$(_wt_link_prompt)'"$RPROMPT"
@@ -226,7 +226,7 @@ Add to `~/.bashrc` or `~/.bash_profile`:
 
 ```bash
 _wt_link_prompt() {
-  wt-link starship 2>/dev/null
+  wt-link starship && printf '⎇ '   # change symbol to taste
 }
 
 PS1='$(_wt_link_prompt)'"$PS1"

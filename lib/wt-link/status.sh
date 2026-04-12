@@ -4,17 +4,21 @@
 #   REGISTRY_FILE, WP_CORE_MARKER, BOLD, GREEN, YELLOW, RED, RESET
 #   (set by bin/wt-link before dispatch)
 
-# cmd_starship — called by Starship custom module; must be fast (no jq/find).
-# Checks the registry to see if the current directory is the active worktree
-# for any registered site. REGISTRY_DIR is set before the early dispatch block
-# in bin/wt-link so it is available here without project resolution.
+# cmd_starship — pure exit-code boolean; no output.
+# Exit 0 = current directory is a mounted wt-link worktree.
+# Exit 1 = not mounted (or no registry).
+# The display symbol is intentionally NOT hardcoded here — define it in your
+# shell prompt config (Starship format, p10k segment, PS1 function, etc.).
+# REGISTRY_DIR is set before the early dispatch block in bin/wt-link so it
+# is available here without project resolution.
 cmd_starship() {
     local cwd
     cwd="$(pwd)"
     for f in "$REGISTRY_DIR"/*.active; do
         [[ -f "$f" ]] || continue
-        grep -q "^active=$cwd$" "$f" 2>/dev/null && { printf '⛓'; return; }
+        grep -q "^active=$cwd$" "$f" 2>/dev/null && return 0
     done
+    return 1
 }
 
 cmd_status() {
