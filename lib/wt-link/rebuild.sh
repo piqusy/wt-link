@@ -23,6 +23,8 @@ cmd_rebuild_composer() {
         [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
         [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
 
+        [[ "$pkg_type" == "plugin" ]] && continue
+
         log "  [$pkg_type] $pkg_name"
 
         # Resolve canonical package path for hardlink-copy fallback
@@ -86,6 +88,8 @@ cmd_rebuild_node() {
         local pkg_type="package"
         [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
         [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
+
+        [[ "$pkg_type" == "plugin" ]] && continue
 
         log "  [$pkg_type] $pkg_name"
 

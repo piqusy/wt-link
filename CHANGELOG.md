@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.5.3] — 2026-04-13
+
+### Changed
+- `rebuild composer` and `rebuild node` now skip packages under `plugins/` — Eightshift plugins are not rebuilt.
+
 ## [2.5.2] — 2026-04-12
 
 ### Fixed
