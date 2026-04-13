@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.6.0] — 2026-04-13
+
+### Changed
+- `rebuild-node` now defaults to starting the webpack watcher (`bun start` / `npm run start`) instead of doing a full rebuild. Use `--build` to get the previous clean-install-build behaviour.
+
+### Added
+- `--build` flag for `rebuild-node` — deletes `node_modules/` + `public/`, runs install, then builds assets.
+- `wlrb` fish alias for `wt-link rebuild-node --build`.
+
 ## [2.5.3] — 2026-04-13
 
 ### Changed

@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.5.3"
+WT_LINK_VERSION="2.6.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -106,7 +106,8 @@ case "${1:-help}" in
         echo "  unmount           Tear down and restore the canonical site"
         echo "  status            Show current link status"
         echo "  rebuild-composer  Delete vendor/ + vendor-prefixed/ and re-run composer install"
-        echo "  rebuild-node      Delete node_modules/ + public/ and rebuild JS/CSS assets"
+        echo "  rebuild-node          Start the webpack watcher (bun start / npm run start)"
+        echo "  rebuild-node --build  Delete node_modules/ + public/ and do a full JS/CSS rebuild"
         echo "  starship          Output ⛓ if cwd is a mounted worktree (for Starship prompt)"
         echo ""
         echo "Options:"
@@ -119,6 +120,7 @@ case "${1:-help}" in
         echo "  wls   wt-link status"
         echo "  wlrc  wt-link rebuild-composer"
         echo "  wlrn  wt-link rebuild-node"
+        echo "  wlrb  wt-link rebuild-node --build"
         echo ""
         echo "Environment:"
         echo "  CANONICAL_SITE   Override the canonical site path (default: ~/Sites/<site-name>)"
@@ -228,10 +230,12 @@ shift 2>/dev/null || true
 FORCE=0
 YES=0
 HARD_COPY=0
+BUILD=0
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
     [[ "$arg" == "--yes"   || "$arg" == "-y" ]] && YES=1
     [[ "$arg" == "--hard-copy" ]] && HARD_COPY=1
+    [[ "$arg" == "--build" ]] && BUILD=1
 done
 
 case "$COMMAND" in

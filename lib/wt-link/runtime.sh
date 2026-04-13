@@ -21,6 +21,16 @@ run_pm_build() {
     esac
 }
 
+run_pm_start() {
+    local pm="$1" dir="$2"
+    case "$pm" in
+        bun)  (cd "$dir" && bun start) ;;
+        yarn) (cd "$dir" && yarn run start) ;;
+        pnpm) (cd "$dir" && pnpm run start) ;;
+        npm)  (cd "$dir" && npm run start) ;;
+    esac
+}
+
 # run_with_spinner <label> <command> [args...]
 #   Runs <command> in the background while showing a braille spinner.
 #   stdout/stderr from the command are captured; on failure the last 5 lines

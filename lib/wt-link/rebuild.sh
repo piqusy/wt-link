@@ -79,51 +79,77 @@ cmd_rebuild_node() {
         exit 0
     fi
 
-    log "Rebuilding node deps + assets for ${#packages[@]} package(s)"
-    echo ""
-
+    local targets=()
     for pkg in "${packages[@]}"; do
-        local pkg_name
-        pkg_name="$(basename "$pkg")"
-        local pkg_type="package"
-        [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
-        [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
-
-        [[ "$pkg_type" == "plugin" ]] && continue
-
-        log "  [$pkg_type] $pkg_name"
-
-        # Remove node_modules
-        local node_modules="$pkg/node_modules"
-        if [[ -L "$node_modules" || -d "$node_modules" ]]; then
-            step "  Removing node_modules/…"
-            rm -rf "$node_modules"
-            success "  node_modules/ removed"
-        fi
-
-        # Remove public/
-        local public_dir="$pkg/public"
-        if [[ -d "$public_dir" ]]; then
-            step "  Removing public/…"
-            rm -rf "$public_dir"
-            success "  public/ removed"
-        fi
-
-        local pm
-        pm="$(detect_package_manager "$pkg")"
-        require_pm "$pm"
-
-        run_with_spinner "  $pm install…" \
-            run_pm_install "$pm" "$pkg" \
-            || warn "  $pm install had warnings"
-        success "  node_modules: installed via $pm"
-
-        run_with_spinner "  $pm run build…" \
-            run_pm_build "$pm" "$pkg" \
-            || warn "  build had errors — check manually"
-        success "  build: done"
+        [[ "$pkg" == *"/plugins/"* ]] && continue
+        targets+=("$pkg")
     done
 
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        warn "No theme packages found"
+        exit 0
+    fi
+
+    # --build: full clean rebuild across all packages
+    if [[ "${BUILD:-0}" -eq 1 ]]; then
+        log "Rebuilding node deps + assets for ${#targets[@]} package(s)"
+        echo ""
+
+        for pkg in "${targets[@]}"; do
+            local pkg_name pkg_type
+            pkg_name="$(basename "$pkg")"
+            pkg_type="package"
+            [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+
+            log "  [$pkg_type] $pkg_name"
+
+            local node_modules="$pkg/node_modules"
+            if [[ -L "$node_modules" || -d "$node_modules" ]]; then
+                step "  Removing node_modules/…"
+                rm -rf "$node_modules"
+                success "  node_modules/ removed"
+            fi
+
+            local public_dir="$pkg/public"
+            if [[ -d "$public_dir" ]]; then
+                step "  Removing public/…"
+                rm -rf "$public_dir"
+                success "  public/ removed"
+            fi
+
+            local pm
+            pm="$(detect_package_manager "$pkg")"
+            require_pm "$pm"
+
+            run_with_spinner "  $pm install…" \
+                run_pm_install "$pm" "$pkg" \
+                || warn "  $pm install had warnings"
+            success "  node_modules: installed via $pm"
+
+            run_with_spinner "  $pm run build…" \
+                run_pm_build "$pm" "$pkg" \
+                || warn "  build had errors — check manually"
+            success "  build: done"
+        done
+
+        echo ""
+        success "Node rebuild complete"
+        return
+    fi
+
+    # Default: start webpack watcher (first theme package only)
+    if [[ ${#targets[@]} -gt 1 ]]; then
+        warn "Multiple packages found — starting first: $(basename "${targets[0]}")"
+    fi
+
+    local pkg="${targets[0]}"
+    local pkg_name pm
+    pkg_name="$(basename "$pkg")"
+    pm="$(detect_package_manager "$pkg")"
+    require_pm "$pm"
+
+    log "Starting webpack watcher for $pkg_name via $pm"
     echo ""
-    success "Node rebuild complete"
+
+    run_pm_start "$pm" "$pkg"
 }
