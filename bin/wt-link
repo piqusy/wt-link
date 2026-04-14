@@ -105,22 +105,31 @@ case "${1:-help}" in
         echo "  mount             Set up a git worktree as a fully working local Herd site"
         echo "  unmount           Tear down and restore the canonical site"
         echo "  status            Show current link status"
-        echo "  rebuild-composer  Delete vendor/ + vendor-prefixed/ and re-run composer install"
-        echo "  rebuild-node          Start the webpack watcher (bun start / npm run start)"
-        echo "  rebuild-node --build  Delete node_modules/ + public/ and do a full JS/CSS rebuild"
-        echo "  starship          Output ⛓ if cwd is a mounted worktree (for Starship prompt)"
+        echo "  rebuild-composer                   Delete vendor/ + vendor-prefixed/ and re-run composer install (themes)"
+        echo "  rebuild-composer --plugins         Same but targets plugins instead of themes"
+        echo "  rebuild-composer --all             Same but targets both themes and plugins"
+        echo "  rebuild-node                       Start the webpack watcher for the first theme"
+        echo "  rebuild-node --plugins             Start the webpack watcher for the first plugin"
+        echo "  rebuild-node --build               Full JS/CSS rebuild for themes (deletes node_modules/ + public/)"
+        echo "  rebuild-node --build --plugins     Same but targets plugins instead of themes"
+        echo "  rebuild-node --build --all         Same but targets both themes and plugins"
+        echo "  starship                           Output ⛓ if cwd is a mounted worktree (for Starship prompt)"
         echo ""
         echo "Options:"
-        echo "  --cwd PATH   Run against a specific worktree directory (default: current directory)"
-        echo "  --hard-copy  Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)"
+        echo "  --cwd PATH    Run against a specific worktree directory (default: current directory)"
+        echo "  --hard-copy   Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)"
+        echo "  --plugins     Target plugin eightshift packages instead of themes"
+        echo "  --all         Target both theme and plugin eightshift packages"
         echo ""
         echo "Short aliases (fish):"
-        echo "  wlm   wt-link mount"
-        echo "  wlu   wt-link unmount"
-        echo "  wls   wt-link status"
-        echo "  wlrc  wt-link rebuild-composer"
-        echo "  wlrn  wt-link rebuild-node"
-        echo "  wlrb  wt-link rebuild-node --build"
+        echo "  wlm    wt-link mount"
+        echo "  wlu    wt-link unmount"
+        echo "  wls    wt-link status"
+        echo "  wlrc   wt-link rebuild-composer"
+        echo "  wlrn   wt-link rebuild-node"
+        echo "  wlrb   wt-link rebuild-node --build"
+        echo "  wlrnp  wt-link rebuild-node --plugins"
+        echo "  wlrbp  wt-link rebuild-node --build --plugins"
         echo ""
         echo "Environment:"
         echo "  CANONICAL_SITE   Override the canonical site path (default: ~/Sites/<site-name>)"
@@ -231,11 +240,15 @@ FORCE=0
 YES=0
 HARD_COPY=0
 BUILD=0
+PLUGINS=0
+ALL=0
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
     [[ "$arg" == "--yes"   || "$arg" == "-y" ]] && YES=1
     [[ "$arg" == "--hard-copy" ]] && HARD_COPY=1
     [[ "$arg" == "--build" ]] && BUILD=1
+    [[ "$arg" == "--plugins" ]] && PLUGINS=1
+    [[ "$arg" == "--all" ]] && ALL=1
 done
 
 case "$COMMAND" in

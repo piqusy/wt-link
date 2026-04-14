@@ -1,13 +1,18 @@
 # Changelog
 
-## [2.6.0] — 2026-04-13
+## [2.6.0] — 2026-04-14
 
 ### Changed
 - `rebuild-node` now defaults to starting the webpack watcher (`bun start` / `npm run start`) instead of doing a full rebuild. Use `--build` to get the previous clean-install-build behaviour.
+- `rebuild-node` and `rebuild-composer` now target **themes only** by default — Eightshift plugin packages are excluded unless explicitly opted in.
 
 ### Added
 - `--build` flag for `rebuild-node` — deletes `node_modules/` + `public/`, runs install, then builds assets.
+- `--plugins` flag for `rebuild-node` and `rebuild-composer` — targets plugin eightshift packages instead of themes (watcher and build modes).
+- `--all` flag for `rebuild-node` and `rebuild-composer` — targets both themes and plugin packages.
 - `wlrb` fish alias for `wt-link rebuild-node --build`.
+- `wlrnp` fish alias for `wt-link rebuild-node --plugins`.
+- `wlrbp` fish alias for `wt-link rebuild-node --build --plugins`.
 
 ## [2.5.3] — 2026-04-13
 

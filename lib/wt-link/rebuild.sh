@@ -13,17 +13,36 @@ cmd_rebuild_composer() {
         exit 0
     fi
 
-    log "Rebuilding composer deps for ${#packages[@]} package(s)"
+    # --all wins over --plugins; default is themes only
+    local targets=()
+    for pkg in "${packages[@]}"; do
+        if [[ "${ALL:-0}" -eq 1 ]]; then
+            targets+=("$pkg")
+        elif [[ "${PLUGINS:-0}" -eq 1 ]]; then
+            [[ "$pkg" == *"/plugins/"* ]] && targets+=("$pkg")
+        else
+            [[ "$pkg" == *"/themes/"* ]] && targets+=("$pkg")
+        fi
+    done
+
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        if [[ "${PLUGINS:-0}" -eq 1 ]]; then
+            warn "No plugin packages found"
+        else
+            warn "No theme packages found"
+        fi
+        exit 0
+    fi
+
+    log "Rebuilding composer deps for ${#targets[@]} package(s)"
     echo ""
 
-    for pkg in "${packages[@]}"; do
+    for pkg in "${targets[@]}"; do
         local pkg_name
         pkg_name="$(basename "$pkg")"
         local pkg_type="package"
         [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
         [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
-
-        [[ "$pkg_type" == "plugin" ]] && continue
 
         log "  [$pkg_type] $pkg_name"
 
@@ -79,18 +98,28 @@ cmd_rebuild_node() {
         exit 0
     fi
 
+    # --all wins over --plugins; default is themes only
     local targets=()
     for pkg in "${packages[@]}"; do
-        [[ "$pkg" == *"/plugins/"* ]] && continue
-        targets+=("$pkg")
+        if [[ "${ALL:-0}" -eq 1 ]]; then
+            targets+=("$pkg")
+        elif [[ "${PLUGINS:-0}" -eq 1 ]]; then
+            [[ "$pkg" == *"/plugins/"* ]] && targets+=("$pkg")
+        else
+            [[ "$pkg" == *"/themes/"* ]] && targets+=("$pkg")
+        fi
     done
 
     if [[ ${#targets[@]} -eq 0 ]]; then
-        warn "No theme packages found"
+        if [[ "${PLUGINS:-0}" -eq 1 ]]; then
+            warn "No plugin packages found"
+        else
+            warn "No theme packages found"
+        fi
         exit 0
     fi
 
-    # --build: full clean rebuild across all packages
+    # --build: full clean rebuild across all targets
     if [[ "${BUILD:-0}" -eq 1 ]]; then
         log "Rebuilding node deps + assets for ${#targets[@]} package(s)"
         echo ""
@@ -100,6 +129,7 @@ cmd_rebuild_node() {
             pkg_name="$(basename "$pkg")"
             pkg_type="package"
             [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+            [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
 
             log "  [$pkg_type] $pkg_name"
 
@@ -137,18 +167,21 @@ cmd_rebuild_node() {
         return
     fi
 
-    # Default: start webpack watcher (first theme package only)
+    # Default: start webpack watcher (first matching package only)
     if [[ ${#targets[@]} -gt 1 ]]; then
         warn "Multiple packages found — starting first: $(basename "${targets[0]}")"
     fi
 
     local pkg="${targets[0]}"
-    local pkg_name pm
+    local pkg_name pkg_type pm
     pkg_name="$(basename "$pkg")"
+    pkg_type="package"
+    [[ "$pkg" == *"/themes/"* ]] && pkg_type="theme"
+    [[ "$pkg" == *"/plugins/"* ]] && pkg_type="plugin"
     pm="$(detect_package_manager "$pkg")"
     require_pm "$pm"
 
-    log "Starting webpack watcher for $pkg_name via $pm"
+    log "Starting webpack watcher for [$pkg_type] $pkg_name via $pm"
     echo ""
 
     run_pm_start "$pm" "$pkg"
