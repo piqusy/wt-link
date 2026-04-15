@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # mount.sh — cmd_mount and its 8 private sub-functions for wt-link.
-# Globals used: SITE_NAME, WORKTREE_ROOT, CANONICAL_SITE, WP_CONTENT,
+# Globals used: SITE_NAME, LOCAL_URL, WORKTREE_ROOT, CANONICAL_SITE, WP_CONTENT,
 #   CANONICAL_WP_CONTENT, WP_VERSION, STATE_FILE, REGISTRY_FILE, REGISTRY_DIR,
 #   WP_CORE_MARKER, FORCE, BOLD, RESET (set by bin/wt-link before dispatch)
 
@@ -95,6 +95,19 @@ _mount_herd_link() {
     # Update registry: this worktree now owns the domain
     registry_set "active" "$WORKTREE_ROOT"
     state_set "herd_linked" "1"
+
+    # Secure via HTTPS if LOCAL_URL uses https:// (idempotent — skip if cert already exists)
+    if [[ "$LOCAL_URL" == https://* ]]; then
+        local certs_dir="$HOME/Library/Application Support/Herd/config/valet/Certificates"
+        if [[ -f "$certs_dir/$SITE_NAME.crt" ]]; then
+            success "HTTPS already secured"
+        else
+            run_with_spinner "Securing $SITE_NAME.test via Herd…" \
+                herd secure "$SITE_NAME" || warn "herd secure failed — HTTPS may not work"
+            state_set "herd_secured" "1"
+            success "HTTPS secured"
+        fi
+    fi
 }
 
 _mount_wp_core() {

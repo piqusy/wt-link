@@ -47,6 +47,12 @@ cmd_unmount() {
             herd unlink "$SITE_NAME" 2>/dev/null || warn "herd unlink had errors"
             success "herd unlink done"
         fi
+        # Unsecure if this mount provisioned the cert (don't touch pre-existing certs)
+        if [[ $has_state -eq 1 && "$(state_get "herd_secured")" == "1" ]]; then
+            run_with_spinner "Unsecuring $SITE_NAME.test via Herd…" \
+                herd unsecure "$SITE_NAME" 2>/dev/null || warn "herd unsecure had errors"
+            success "herd unsecure done"
+        fi
         registry_clear_active
     fi
 

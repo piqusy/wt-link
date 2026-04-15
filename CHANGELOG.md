@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.6.1] — 2026-04-15
+
+### Fixed
+- Worktree domains now get a TLS certificate on mount when `urls.local` is `https://`. Previously, `herd link` was called but `herd secure` was not, leaving the worktree site without HTTPS. Certificate is removed on unmount only if wt-link provisioned it.
+
 ## [2.6.0] — 2026-04-14
 
 ### Changed
