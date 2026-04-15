@@ -102,8 +102,8 @@ _mount_herd_link() {
         if [[ -f "$certs_dir/$SITE_NAME.crt" ]]; then
             success "HTTPS already secured"
         else
-            run_with_spinner "Securing $SITE_NAME.test via Herd…" \
-                herd secure "$SITE_NAME" || warn "herd secure failed — HTTPS may not work"
+            step "Securing $SITE_NAME.test via Herd…"
+            herd secure "$SITE_NAME" || warn "herd secure failed — HTTPS may not work"
             state_set "herd_secured" "1"
             success "HTTPS secured"
         fi
