@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.7.1"
+WT_LINK_VERSION="2.8.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -207,8 +207,15 @@ SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.
 # WP version from setup.json
 WP_VERSION="$(jq -r '.core // "latest"' "$SETUP_JSON" 2>/dev/null || echo "latest")"
 
-# Subdomains for WPML or multisite (optional — space-separated for array handoff)
-SUBDOMAIN_LIST="$(jq -r '(.urls.subdomains // []) | join(" ")' "$SETUP_JSON" 2>/dev/null || true)"
+# wt-link config files (wt-link.json = project-level; wt-link.local.json = gitignored overrides)
+WTL_JSON="$WORKTREE_ROOT/wt-link.json"
+WTL_LOCAL_JSON="$WORKTREE_ROOT/wt-link.local.json"
+
+SUBDOMAIN_LIST="$(jq -r '(.subdomains // []) | join(" ")' "$WTL_JSON" 2>/dev/null || true)"
+if [[ -f "$WTL_LOCAL_JSON" ]]; then
+    _local_subs="$(jq -r '(.subdomains // []) | join(" ")' "$WTL_LOCAL_JSON" 2>/dev/null || true)"
+    [[ -n "$_local_subs" ]] && SUBDOMAIN_LIST="$_local_subs"
+fi
 
 # Canonical site path (override with env var)
 CANONICAL_SITE="${CANONICAL_SITE:-$HOME/Sites/$SITE_NAME}"

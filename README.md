@@ -143,19 +143,21 @@ This is the standard [Eightshift](https://eightshift.com) project format.
 
 ### WPML / multisite subdomains
 
-If your site uses WPML (or any plugin) configured with subdomains (e.g. `research.mysite.test`, `platform.mysite.test`), declare them under `urls.subdomains`:
+If your site uses WP multisite or WPML with subdomain sub-sites (e.g. `research.mysite.test`), declare them in a `wt-link.json` file at the project root:
 
 ```json
-{
-  "urls": {
-    "local": "https://mysite.test/",
-    "subdomains": ["research", "platform"]
-  },
-  "core": "6.7.2"
-}
+{ "subdomains": ["research", "platform"] }
 ```
 
 On `mount`, each subdomain gets its own `herd link` and TLS certificate so it is reachable at `https://research.mysite.test/`, etc. On `unmount`, links and certs are restored to the canonical site automatically.
+
+For per-developer overrides (e.g. you only need one of the sub-sites), create `wt-link.local.json` alongside it — its values replace the base:
+
+```json
+{ "subdomains": ["research"] }
+```
+
+Add `wt-link.local.json` to your project's `.gitignore`. Commit `wt-link.json` so every developer gets subdomains working out of the box.
 
 ## Development
 

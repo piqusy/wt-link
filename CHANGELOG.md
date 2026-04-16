@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.8.0] — 2026-04-16
+
+### Changed
+- Subdomain config moved from `setup.json` (`urls.subdomains`) to dedicated `wt-link.json` (`subdomains`). Add `wt-link.local.json` (same shape) for per-developer overrides — local values replace the base. Add `wt-link.local.json` to your project's `.gitignore`.
+
 ## [2.7.1] — 2026-04-16
 
 ### Fixed
