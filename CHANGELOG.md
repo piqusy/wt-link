@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.7.1] — 2026-04-16
+
+### Fixed
+- WP multisite subdomain sub-sites now load correctly — `WP_HOME` and `WP_SITEURL` constants are stripped from the worktree's `wp-config.php` when `urls.subdomains` is declared, allowing each sub-site to resolve its URL from its own database options instead of being redirected to the main domain.
+
 ## [2.7.0] — 2026-04-16
 
 ### Added

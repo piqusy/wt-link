@@ -148,6 +148,19 @@ _mount_wp_config() {
         state_set "wp_config_copied" "1"
         success "wp-config.php copied from canonical site"
     fi
+
+    # In WP multisite, WP_HOME / WP_SITEURL constants in wp-config.php override the
+    # per-blog siteurl/home options — every sub-site gets redirected to the main domain.
+    # When subdomains are declared, strip these constants so each sub-site is resolved
+    # from its own DB options instead.
+    if [[ -n "${SUBDOMAIN_LIST:-}" ]]; then
+        local cfg="$WORKTREE_ROOT/wp-config.php"
+        if grep -q "WP_HOME\|WP_SITEURL" "$cfg" 2>/dev/null; then
+            sed -i '' "/define.*'WP_HOME'/d; /define.*'WP_SITEURL'/d" "$cfg" \
+                || warn "Could not strip WP_HOME/WP_SITEURL from wp-config.php"
+            success "wp-config.php: removed WP_HOME/WP_SITEURL (multisite per-blog URLs now from DB)"
+        fi
+    fi
 }
 
 _mount_plugins() {
