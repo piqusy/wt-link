@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.6.3] — 2026-04-16
+
+### Fixed
+- `herd unsecure` no longer hangs waiting for a password on unmount — runs in the foreground so macOS can prompt for credentials instead of being silenced inside a background spinner subprocess.
+
 ## [2.6.2] — 2026-04-15
 
 ### Fixed
