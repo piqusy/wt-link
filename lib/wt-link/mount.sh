@@ -2,7 +2,7 @@
 # mount.sh — cmd_mount and its 8 private sub-functions for wt-link.
 # Globals used: SITE_NAME, LOCAL_URL, WORKTREE_ROOT, CANONICAL_SITE, WP_CONTENT,
 #   CANONICAL_WP_CONTENT, WP_VERSION, STATE_FILE, REGISTRY_FILE, REGISTRY_DIR,
-#   WP_CORE_MARKER, FORCE, BOLD, RESET (set by bin/wt-link before dispatch)
+#   WP_CORE_MARKER, SUBDOMAIN_LIST, FORCE, BOLD, RESET (set by bin/wt-link before dispatch)
 
 # ── Private sub-functions ─────────────────────────────────────────────────────
 
@@ -370,6 +370,42 @@ _mount_eightshift_pkgs() {
     [[ $any_failed -eq 0 ]] || return 1
 }
 
+_mount_herd_subdomains() {
+    [[ -z "${SUBDOMAIN_LIST:-}" ]] && return 0
+
+    local certs_dir="$HOME/Library/Application Support/Herd/config/valet/Certificates"
+    local herd_links_dir="$HOME/Library/Application Support/Herd/config/valet/Sites"
+
+    read -ra subdomains <<< "$SUBDOMAIN_LIST"
+    local total="${#subdomains[@]}"
+    step "Linking $total WPML subdomain(s)…"
+
+    for sub in "${subdomains[@]}"; do
+        local full_name="$sub.$SITE_NAME"
+        local herd_link="$herd_links_dir/$full_name"
+
+        if [[ -L "$herd_link" && "$(readlink "$herd_link")" == "$WORKTREE_ROOT" ]]; then
+            success "  $full_name.test already linked"
+        else
+            [[ -L "$herd_link" ]] && rm "$herd_link"
+            bash -c "cd '$WORKTREE_ROOT' && herd link '$full_name'" \
+                || { warn "  herd link $full_name failed — skipping"; continue; }
+            state_set "subdomain_linked_$sub" "1"
+            success "  $full_name.test linked"
+        fi
+
+        if [[ "$LOCAL_URL" == https://* ]]; then
+            if [[ -f "$certs_dir/$full_name.crt" ]]; then
+                success "  $full_name.test already secured"
+            else
+                herd secure "$full_name" || warn "  herd secure $full_name failed"
+                state_set "subdomain_secured_$sub" "1"
+                success "  $full_name.test secured"
+            fi
+        fi
+    done
+}
+
 _mount_verify() {
     # Verify domain (Herd was triggered at step 1 — should be live by now)
     wait_for_herd "$SITE_NAME.test" 10
@@ -411,6 +447,7 @@ cmd_mount() {
     ' ERR
     _mount_validate
     _mount_herd_link
+    _mount_herd_subdomains
     _mount_wp_core
     _mount_wp_config
     _mount_plugins

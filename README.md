@@ -110,7 +110,7 @@ alias wlrn 'wt-link rebuild-node'
    - Hardlink-copies `vendor/` and `vendor-prefixed/` from the canonical site (`cp -Rl`; zero extra disk on APFS, falls back to `composer install` if canonical has none)
    - Runs `<pm> install` sequentially per theme — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
    - Runs `<pm> run build` in parallel across themes; skips build for plugins
-6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`
+6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
 
 A state file at `~/.config/wt-link/<site>.<worktree-basename>.state` tracks everything created so `unmount` can reverse it precisely. Existing `.worktree-link-state` files inside worktrees are migrated to this location automatically on next mount.
 
@@ -140,6 +140,22 @@ Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the 
 ```
 
 This is the standard [Eightshift](https://eightshift.com) project format.
+
+### WPML / multisite subdomains
+
+If your site uses WPML (or any plugin) configured with subdomains (e.g. `research.mysite.test`, `platform.mysite.test`), declare them under `urls.subdomains`:
+
+```json
+{
+  "urls": {
+    "local": "https://mysite.test/",
+    "subdomains": ["research", "platform"]
+  },
+  "core": "6.7.2"
+}
+```
+
+On `mount`, each subdomain gets its own `herd link` and TLS certificate so it is reachable at `https://research.mysite.test/`, etc. On `unmount`, links and certs are restored to the canonical site automatically.
 
 ## Development
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.7.0] — 2026-04-16
+
+### Added
+- WPML / multisite subdomain support — declare `urls.subdomains` in `setup.json` (e.g. `["research", "platform"]`) and each subdomain gets its own `herd link` and TLS certificate on mount, restored to canonical on unmount.
+
 ## [2.6.3] — 2026-04-16
 
 ### Fixed

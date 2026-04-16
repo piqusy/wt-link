@@ -57,6 +57,30 @@ cmd_unmount() {
     fi
 
 
+    # 1b. Restore WPML subdomains ─────────────────────────────────────────────────
+    if [[ -n "${SUBDOMAIN_LIST:-}" ]]; then
+        local sub_canonical
+        sub_canonical="$(registry_get canonical)"
+        [[ -z "$sub_canonical" ]] && sub_canonical="$CANONICAL_SITE"
+
+        local subdomains=()
+        read -ra subdomains <<< "$SUBDOMAIN_LIST"
+        for sub in "${subdomains[@]}"; do
+            local full_name="$sub.$SITE_NAME"
+            if [[ $has_state -eq 1 && "$(state_get "subdomain_linked_$sub")" == "1" ]]; then
+                if [[ -d "$sub_canonical" ]]; then
+                    bash -c "cd '$sub_canonical' && herd link '$full_name'" 2>/dev/null \
+                        || warn "herd link restore failed for $full_name"
+                else
+                    herd unlink "$full_name" 2>/dev/null || true
+                fi
+            fi
+            if [[ $has_state -eq 1 && "$(state_get "subdomain_secured_$sub")" == "1" ]]; then
+                herd unsecure "$full_name" 2>/dev/null || warn "herd unsecure failed for $full_name"
+            fi
+        done
+    fi
+
     # 2. Remove uploads symlink ──────────────────────────────────────────────────
     local uploads_dest="$WP_CONTENT/uploads"
     if [[ -L "$uploads_dest" ]]; then

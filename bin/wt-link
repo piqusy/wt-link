@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.6.3"
+WT_LINK_VERSION="2.7.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -206,6 +206,9 @@ SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.
 
 # WP version from setup.json
 WP_VERSION="$(jq -r '.core // "latest"' "$SETUP_JSON" 2>/dev/null || echo "latest")"
+
+# Subdomains for WPML or multisite (optional — space-separated for array handoff)
+SUBDOMAIN_LIST="$(jq -r '(.urls.subdomains // []) | join(" ")' "$SETUP_JSON" 2>/dev/null || true)"
 
 # Canonical site path (override with env var)
 CANONICAL_SITE="${CANONICAL_SITE:-$HOME/Sites/$SITE_NAME}"
