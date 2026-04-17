@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.10.0] — 2026-04-17
+
+### Changed
+- Build UX: `▶ Build: <theme>` header now appears before node_modules install, grouping install + build under one section. Spinner shown while assets compile.
+- README: remove "instantly" from intro, remove aliases section, add `--no-indicator` to options, document branch indicator as mount step 5, update Starship config to work from any subdirectory via `git rev-parse --show-toplevel`.
+
 ## [2.9.0] — 2026-04-17
 
 ### Added

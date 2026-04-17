@@ -1,6 +1,6 @@
 # wt-link
 
-Mount or unmount a git worktree as a fully functional local [Laravel Herd](https://herd.laravel.com) WordPress site — instantly.
+Mount or unmount a git worktree as a fully functional local [Laravel Herd](https://herd.laravel.com) WordPress site.
 
 When developing on a feature branch using `git worktree`, the worktree directory is bare: no WordPress core, no wp-config, no plugins, no uploads, no built assets. `wt-link mount` wires all of that up in seconds so the branch is live at the same `.test` URL as your main site.
 
@@ -48,10 +48,11 @@ Commands:
   rebuild-node      Re-run <pm> install + build for all Eightshift packages
 
 Options:
-  --cwd PATH   Run against a specific worktree directory (default: current dir)
-  --force      Switch domain to this worktree without prompting (shows a notice)
-  --yes / -y   Proceed non-interactively with no output (for hook contexts)
-  --hard-copy  Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
+  --cwd PATH      Run against a specific worktree directory (default: current dir)
+  --force         Switch domain to this worktree without prompting (shows a notice)
+  --yes / -y      Proceed non-interactively with no output (for hook contexts)
+  --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
+  --no-indicator  Skip injecting the worktree branch indicator into the site
 ```
 
 ### Examples
@@ -88,29 +89,18 @@ wt-link rebuild-composer
 wt-link rebuild-node
 ```
 
-### Fish shell aliases
-
-If you use Fish, add these to your config:
-
-```fish
-alias wlm 'wt-link mount'
-alias wlu 'wt-link unmount'
-alias wls 'wt-link status'
-alias wlrc 'wt-link rebuild-composer'
-alias wlrn 'wt-link rebuild-node'
-```
-
 ## What `mount` does
 
 1. **WP core** — Downloads WordPress (version from `setup.json`) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
 3. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
 4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
-5. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
+5. **Branch indicator** — Injects `wp-content/mu-plugins/wt-link-indicator.php` with the current branch name baked in; shows a fixed bottom-center toast (⎇ branch) on both frontend and admin, click to dismiss. Pass `--no-indicator` to skip.
+6. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
    - Hardlink-copies `vendor/` and `vendor-prefixed/` from the canonical site (`cp -Rl`; zero extra disk on APFS, falls back to `composer install` if canonical has none)
    - Runs `<pm> install` sequentially per theme — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
    - Runs `<pm> run build` in parallel across themes; skips build for plugins
-6. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
+7. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
 
 A state file at `~/.config/wt-link/<site>.<worktree-basename>.state` tracks everything created so `unmount` can reverse it precisely. Existing `.worktree-link-state` files inside worktrees are migrated to this location automatically on next mount.
 
@@ -199,11 +189,15 @@ Add to `~/.config/starship.toml`:
 
 ```toml
 [custom.wt-link]
-when = "wt-link starship"
-format = "[⎇ linked]($style) "   # change symbol and label to taste
+command = 'cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && wt-link starship'
+when = 'cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && wt-link starship'
+format = "[⎇ $output]($style) "
 style = "bold yellow"
+shell = ["sh"]
 ignore_timeout = true
 ```
+
+> `git rev-parse --show-toplevel` resolves the repo root first so the indicator works from any subdirectory, not just the worktree root.
 
 ### Powerlevel10k
 

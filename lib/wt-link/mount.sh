@@ -383,7 +383,7 @@ _mount_eightshift_pkgs() {
         local pkg="${theme_pkgs[$i]}" pm="${theme_pms[$i]}"
         local pkg_name
         pkg_name="$(basename "${theme_pkgs[$i]}")"
-        log "node_modules: $pkg_name"
+        log "Build: $pkg_name"
         run_with_spinner "  $pm install…" \
             run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
         success "  node_modules: installed via $pm"
@@ -410,9 +410,8 @@ _mount_eightshift_pkgs() {
 
     local any_failed=0
     for i in "${!pids[@]}"; do
-        echo ""
-        log "Build: ${pkgnames[$i]}"
-        if wait "${pids[$i]}"; then
+        local pm="${theme_pms[$i]}"
+        if wait_pid_with_spinner "${pids[$i]}" "  $pm run build…"; then
             cat "${tmpfiles[$i]}"
             success "  ${pkgnames[$i]}: done"
         else

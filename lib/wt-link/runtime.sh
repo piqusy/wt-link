@@ -68,6 +68,23 @@ run_with_spinner() {
     return $exit_code
 }
 
+# wait_pid_with_spinner <pid> <label>
+#   Shows a braille spinner while waiting for an already-running background pid.
+wait_pid_with_spinner() {
+    local pid="$1" label="$2"
+    local spinner='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local i=0
+    printf "  %s %s" "${spinner:0:1}" "$label"
+    while kill -0 "$pid" 2>/dev/null; do
+        printf "\r  %s %s" "${spinner:$(( i % ${#spinner} )):1}" "$label"
+        sleep 0.1
+        i=$(( i + 1 ))
+    done
+    printf "\r\033[K"
+    wait "$pid"
+    return $?
+}
+
 # wait_for_herd <domain> <timeout_secs>
 #   Polls http:// and https:// for the domain until any HTTP response is received
 #   or the timeout expires. Displays a spinner while waiting.
