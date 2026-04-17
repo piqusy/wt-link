@@ -37,7 +37,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.8.0"
+WT_LINK_VERSION="2.9.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -117,7 +117,8 @@ case "${1:-help}" in
         echo ""
         echo "Options:"
         echo "  --cwd PATH    Run against a specific worktree directory (default: current directory)"
-        echo "  --hard-copy   Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)"
+        echo "  --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
+  --no-indicator  Skip injecting the worktree branch indicator into the site"
         echo "  --plugins     Target plugin eightshift packages instead of themes"
         echo "  --all         Target both theme and plugin eightshift packages"
         echo ""
@@ -252,6 +253,7 @@ HARD_COPY=0
 BUILD=0
 PLUGINS=0
 ALL=0
+NO_INDICATOR=0
 for arg in "$@"; do
     [[ "$arg" == "--force" || "$arg" == "-f" ]] && FORCE=1
     [[ "$arg" == "--yes"   || "$arg" == "-y" ]] && YES=1
@@ -259,6 +261,7 @@ for arg in "$@"; do
     [[ "$arg" == "--build" ]] && BUILD=1
     [[ "$arg" == "--plugins" ]] && PLUGINS=1
     [[ "$arg" == "--all" ]] && ALL=1
+    [[ "$arg" == "--no-indicator" ]] && NO_INDICATOR=1
 done
 
 case "$COMMAND" in

@@ -190,6 +190,17 @@ cmd_unmount() {
         warn "wp-config.php left in place (no state file — remove manually if needed)"
     fi
 
+    # 6b. Remove wt-link indicator mu-plugin if we created it ────────────────────
+    if [[ $has_state -eq 1 && "$(state_get wt_link_indicator)" == "1" ]]; then
+        local indicator="$WP_CONTENT/mu-plugins/wt-link-indicator.php"
+        [[ -f "$indicator" ]] && rm "$indicator"
+        success "wt-link indicator removed"
+    fi
+    if [[ $has_state -eq 1 && "$(state_get wt_link_mu_plugins_dir)" == "1" ]]; then
+        local mu_dir="$WP_CONTENT/mu-plugins"
+        [[ -d "$mu_dir" ]] && rmdir "$mu_dir" 2>/dev/null || true
+    fi
+
     # 7. Clean up state file ─────────────────────────────────────────────────────
     rm -f "$STATE_FILE"
     success "State file cleaned up"

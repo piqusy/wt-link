@@ -250,6 +250,49 @@ _mount_uploads() {
     fi
 }
 
+_mount_mu_plugin() {
+    [[ "${NO_INDICATOR:-0}" == "1" ]] && return 0
+
+    local mu_dir="$WP_CONTENT/mu-plugins"
+    local indicator_file="$mu_dir/wt-link-indicator.php"
+    local branch
+    branch=$(git -C "$WORKTREE_ROOT" branch --show-current 2>/dev/null || basename "$WORKTREE_ROOT")
+
+    if [[ -f "$indicator_file" ]]; then
+        success "wt-link indicator already present"
+        return
+    fi
+
+    if [[ ! -d "$mu_dir" ]]; then
+        mkdir -p "$mu_dir"
+        state_set "wt_link_mu_plugins_dir" "1"
+    fi
+
+    cat > "$indicator_file" << 'PHPEOF'
+<?php
+/* wt-link worktree indicator — auto-generated, do not edit */
+defined('ABSPATH') || exit;
+add_action('wp_footer',    'wt_link_indicator_render');
+add_action('admin_footer', 'wt_link_indicator_render');
+function wt_link_indicator_render() {
+    $branch = 'BRANCH_PLACEHOLDER';
+    echo '<div id="wt-link-indicator" style="'
+        . 'position:fixed;bottom:0;left:50%;transform:translateX(-50%);'
+        . 'background:#1e1e2e;color:#ffffff;padding:10px 10px 6px;font-family:monospace;'
+        . 'font-size:12px;border-top-left-radius:12px;border-top-right-radius:12px;z-index:999999;'
+        . 'box-shadow:0 2px 12px rgba(0,0,0,.5);cursor:pointer;user-select:none;'
+        . 'white-space:nowrap;" onclick="this.remove()" title="click to dismiss">'
+        . '&#x2387; ' . esc_html($branch)
+        . '</div>';
+}
+PHPEOF
+
+    sd 'BRANCH_PLACEHOLDER' "$branch" "$indicator_file"
+
+    state_set "wt_link_indicator" "1"
+    success "wt-link indicator injected (branch: $branch)"
+}
+
 _mount_eightshift_pkgs() {
     local packages
     mapfile -t packages < <(find_eightshift_packages)
@@ -465,6 +508,7 @@ cmd_mount() {
     _mount_wp_config
     _mount_plugins
     _mount_uploads
+    _mount_mu_plugin
     _mount_eightshift_pkgs
     _mount_verify
     trap - ERR

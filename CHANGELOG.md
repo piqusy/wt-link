@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.9.0] — 2026-04-17
+
+### Added
+- Worktree branch indicator — a fixed bottom-center toast showing the current branch name (⎇ branch) is injected as a mu-plugin on mount and removed on unmount. Works on both frontend and admin. Click to dismiss. Pass `--no-indicator` to skip.
+
 ## [2.8.0] — 2026-04-16
 
 ### Changed
