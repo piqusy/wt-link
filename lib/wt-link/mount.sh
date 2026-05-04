@@ -163,6 +163,38 @@ _mount_wp_config() {
     fi
 }
 
+_mount_root_runtime_files() {
+    local files=()
+    while IFS= read -r p; do
+        [[ -n "$p" ]] && files+=("$p")
+    done < <(find_copyable_root_files)
+
+    local total="${#files[@]}"
+    if [[ $total -eq 0 ]]; then
+        success "Root runtime files: nothing to copy"
+        return 0
+    fi
+
+    local copied=0
+    step "Copying $total root runtime files…"
+    for src in "${files[@]}"; do
+        local name dest
+        name="$(basename "$src")"
+        dest="$WORKTREE_ROOT/$name"
+
+        if [[ -e "$dest" || -L "$dest" ]]; then
+            continue
+        fi
+
+        cp -p "$src" "$dest" \
+            || { warn "  Failed to copy $name — skipping"; continue; }
+        state_set "root_file_copied" "$name"
+        copied=$((copied + 1))
+    done
+
+    success "Root runtime files: $copied newly copied"
+}
+
 _mount_plugins() {
     # Globals: HARD_COPY (0=symlink default, 1=parallel hard-copy)
     local plugins=()
@@ -505,6 +537,7 @@ cmd_mount() {
     _mount_herd_subdomains
     _mount_wp_core
     _mount_wp_config
+    _mount_root_runtime_files
     _mount_plugins
     _mount_uploads
     _mount_mu_plugin

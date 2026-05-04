@@ -1,6 +1,6 @@
 # shellcheck shell=bash
 # project.sh — Project discovery helpers for wt-link.
-# Globals used: WP_CONTENT, CANONICAL_WP_CONTENT (set by bin/wt-link before dispatch)
+# Globals used: WP_CONTENT, CANONICAL_WP_CONTENT, CANONICAL_SITE (set by bin/wt-link before dispatch)
 
 # Walk up from $1 until setup.json is found, but stop at the git repo root.
 # Echoes the directory containing setup.json and returns 0 on success.
@@ -60,6 +60,34 @@ find_untracked_plugins() {
     local idx="$plugins_dir/index.php"
     local canonical_idx="$canonical_plugins/index.php"
     [[ ! -e "$idx" && -f "$canonical_idx" ]] && echo "$canonical_idx"
+}
+
+# Root-level runtime files that should be copied from canonical when missing.
+# Includes wt-link config files and .env variants, but skips example templates.
+find_copyable_root_files() {
+    [[ -d "$CANONICAL_SITE" ]] || return
+
+    local path base
+    for path in \
+        "$CANONICAL_SITE/wt-link.json" \
+        "$CANONICAL_SITE/wt-link.local.json" \
+        "$CANONICAL_SITE/.env"
+    do
+        [[ -f "$path" ]] && echo "$path"
+    done
+
+    shopt -s nullglob
+    for path in "$CANONICAL_SITE"/.env.*; do
+        [[ -f "$path" ]] || continue
+        base="$(basename "$path")"
+        case "$base" in
+            .env.example|.env.*.example)
+                continue
+                ;;
+        esac
+        echo "$path"
+    done
+    shopt -u nullglob
 }
 
 # Lockfile takes priority over package.json "packageManager" field.

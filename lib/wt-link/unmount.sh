@@ -190,7 +190,28 @@ cmd_unmount() {
         warn "wp-config.php left in place (no state file — remove manually if needed)"
     fi
 
-    # 6b. Remove wt-link indicator mu-plugin if we created it ────────────────────
+    # 6b. Remove copied root runtime files if we created them ────────────────────
+    local removed_root_files=0
+    if [[ $has_state -eq 1 ]]; then
+        while IFS= read -r rel_path; do
+            [[ -n "$rel_path" ]] || continue
+            [[ -f "$WORKTREE_ROOT/$rel_path" || -L "$WORKTREE_ROOT/$rel_path" ]] || continue
+            removed_root_files=$((removed_root_files + 1))
+        done < <(state_get_all root_file_copied | sort -u)
+
+        if [[ $removed_root_files -gt 0 ]]; then
+            _unmount_remove_root_files() {
+                while IFS= read -r rel_path; do
+                    [[ -n "$rel_path" ]] || continue
+                    rm -f "$WORKTREE_ROOT/$rel_path"
+                done < <(state_get_all root_file_copied | sort -u)
+            }
+            run_with_spinner "Removing $removed_root_files copied root runtime files…" _unmount_remove_root_files
+        fi
+    fi
+    success "Removed $removed_root_files copied root runtime files"
+
+    # 6c. Remove wt-link indicator mu-plugin if we created it ────────────────────
     if [[ $has_state -eq 1 && "$(state_get wt_link_indicator)" == "1" ]]; then
         local indicator="$WP_CONTENT/mu-plugins/wt-link-indicator.php"
         [[ -f "$indicator" ]] && rm "$indicator"

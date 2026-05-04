@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.11.0] — 2026-05-04
+
+### Added
+- Mount now copies missing root runtime files from canonical site into worktree: `wt-link.json`, `wt-link.local.json`, `.env`, and `.env.*` variants. Example templates like `.env.example` and `.env.*.example` are skipped.
+
+### Fixed
+- Subdomain config now falls back to canonical `wt-link.json` / `wt-link.local.json` before those files are copied, so first mount still provisions subdomains correctly.
+- Unmount now removes only root runtime files that `wt-link` copied and tracked in state.
+
 ## [2.10.0] — 2026-04-17
 
 ### Changed

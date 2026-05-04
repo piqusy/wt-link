@@ -93,20 +93,21 @@ wt-link rebuild-node
 
 1. **WP core** — Downloads WordPress (version from `setup.json`) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
-3. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
-4. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
-5. **Branch indicator** — Injects `wp-content/mu-plugins/wt-link-indicator.php` with the current branch name baked in; shows a fixed bottom-center toast (⎇ branch) on both frontend and admin, click to dismiss. Pass `--no-indicator` to skip.
-6. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
+3. **Root runtime files** — Copies `wt-link.json`, `wt-link.local.json`, `.env`, and `.env.*` variants from the canonical site when they are missing in the worktree (example templates like `.env.example` are skipped)
+4. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
+5. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
+6. **Branch indicator** — Injects `wp-content/mu-plugins/wt-link-indicator.php` with the current branch name baked in; shows a fixed bottom-center toast (⎇ branch) on both frontend and admin, click to dismiss. Pass `--no-indicator` to skip.
+7. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
    - Hardlink-copies `vendor/` and `vendor-prefixed/` from the canonical site (`cp -Rl`; zero extra disk on APFS, falls back to `composer install` if canonical has none)
    - Runs `<pm> install` sequentially per theme — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
    - Runs `<pm> run build` in parallel across themes; skips build for plugins
-7. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
+8. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
 
 A state file at `~/.config/wt-link/<site>.<worktree-basename>.state` tracks everything created so `unmount` can reverse it precisely. Existing `.worktree-link-state` files inside worktrees are migrated to this location automatically on next mount.
 
 ## What `unmount` does
 
-Reverses all of the above: removes symlinks, hard-copied plugin directories, WP core files, wp-config, restores the Herd link to the canonical site, and deletes the state file.
+Reverses all of the above: removes symlinks, hard-copied plugin directories, copied root runtime files, WP core files, wp-config, restores the Herd link to the canonical site, and deletes the state file.
 
 ## What `rebuild-composer` does
 
@@ -148,6 +149,8 @@ For per-developer overrides (e.g. you only need one of the sub-sites), create `w
 ```
 
 Add `wt-link.local.json` to your project's `.gitignore`. Commit `wt-link.json` so every developer gets subdomains working out of the box.
+
+If your canonical site has local runtime files like `.env`, `.env.local`, or similar `.env.*` variants, `wt-link mount` copies them into the worktree when missing so the site can boot without committing secrets. Example templates such as `.env.example` are intentionally not copied.
 
 ## Development
 

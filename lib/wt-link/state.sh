@@ -4,6 +4,7 @@
 
 state_set() { echo "$1=$2" >> "$STATE_FILE"; }
 state_get() { grep "^$1=" "$STATE_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+state_get_all() { grep "^$1=" "$STATE_FILE" 2>/dev/null | cut -d= -f2- || true; }
 
 registry_get() {
     grep "^$1=" "$REGISTRY_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true
