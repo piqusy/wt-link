@@ -37,51 +37,12 @@ jobs:
         id: sha256
         run: echo "hash=$(sha256sum "${{ steps.archive.outputs.archive }}" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
-      - name: Extract changelog entry
-        id: changelog
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          awk -v ver="$VERSION" '
-            $0 ~ "^## \\[" ver "\\]" { flag=1 }
-            flag && $0 ~ "^## \\[" && $0 !~ "^## \\[" ver "\\]" { exit }
-            flag { print }
-          ' CHANGELOG.md > release-changelog.md
-
-          if [[ ! -s release-changelog.md ]]; then
-            echo "Missing changelog entry for version $VERSION in CHANGELOG.md" >&2
-            exit 1
-          fi
-
       - name: Build release body
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          {
-            echo "## Changelog"
-            echo
-            cat release-changelog.md
-            echo
-            echo "## Install"
-            echo
-            echo '```bash'
-            echo 'brew tap piqusy/tap'
-            echo 'brew install piqusy/tap/wt-link'
-            echo '```'
-            echo
-            echo '### Manual download'
-            echo
-            echo "Download \`wt-link-${VERSION}.tar.gz\` below, then:"
-            echo
-            echo '```bash'
-            echo "tar -xzf wt-link-${VERSION}.tar.gz"
-            echo 'sudo cp bin/wt-link /usr/local/bin/'
-            echo 'sudo cp -r lib/wt-link /usr/local/lib/'
-            echo '```'
-            echo
-            echo 'Verify checksum:'
-            echo '```bash'
-            echo "sha256sum -c wt-link-${VERSION}.tar.gz.sha256"
-            echo '```'
-          } > release-body.md
+          .github/scripts/build-release-body.sh \
+            "${{ steps.version.outputs.version }}" \
+            release-body.md \
+            release-changelog.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
