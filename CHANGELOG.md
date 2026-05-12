@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.11.1] — 2026-05-12
+
+### Changed
+- Release automation now supports a dry-run preview and includes the changelog in generated releases.
+
+### Fixed
+- Mount now infers the WordPress core version via `wp core version` when `setup.json` does not define `core`, falling back to `latest` only when no existing install can be probed.
+
 ## [2.11.0] — 2026-05-04
 
 ### Added
