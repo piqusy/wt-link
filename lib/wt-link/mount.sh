@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # mount.sh — cmd_mount and its 8 private sub-functions for wt-link.
 # Globals used: SITE_NAME, LOCAL_URL, WORKTREE_ROOT, CANONICAL_SITE, WP_CONTENT,
-#   CANONICAL_WP_CONTENT, WP_VERSION, STATE_FILE, REGISTRY_FILE, REGISTRY_DIR,
-#   WP_CORE_MARKER, SUBDOMAIN_LIST, FORCE, BOLD, RESET (set by bin/wt-link before dispatch)
+#   CANONICAL_WP_CONTENT, WP_VERSION, WP_VERSION_SOURCE, STATE_FILE, REGISTRY_FILE,
+#   REGISTRY_DIR, WP_CORE_MARKER, SUBDOMAIN_LIST, FORCE, BOLD, RESET
+#   (set by bin/wt-link before dispatch)
 
 # ── Private sub-functions ─────────────────────────────────────────────────────
 
@@ -111,6 +112,12 @@ _mount_herd_link() {
 }
 
 _mount_wp_core() {
+    if [[ "$WP_VERSION_SOURCE" == "wp-cli" ]]; then
+        step "setup.json core missing — using WordPress $WP_VERSION inferred via wp-cli"
+    elif [[ "$WP_VERSION_SOURCE" == "default" ]]; then
+        warn "setup.json core missing and wp-cli could not infer a version — falling back to latest"
+    fi
+
     if [[ -f "$WP_CORE_MARKER" ]]; then
         success "WP core already present ($(wp_clean core version --path="$WORKTREE_ROOT" || echo 'unknown'))"
     else

@@ -14,3 +14,21 @@ require_pm() {
 wp_clean() {
     wp "$@" 2>/dev/null | grep -v -e '^[[:space:]]*$' -e 'Deprecated' | head -1 | tr -d '\n'
 }
+
+infer_wp_core_version() {
+    local path version
+
+    command -v wp &>/dev/null || return 1
+
+    for path in "$@"; do
+        [[ -n "$path" && -f "$path/wp-load.php" ]] || continue
+
+        version="$(wp_clean core version --path="$path" || true)"
+        if [[ -n "$version" ]]; then
+            printf '%s\n' "$version"
+            return 0
+        fi
+    done
+
+    return 1
+}

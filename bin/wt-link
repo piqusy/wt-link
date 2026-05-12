@@ -6,7 +6,7 @@
 #   up all the pieces that make the worktree browsable at the same local URL as
 #   the canonical (main) site:
 #
-#     • Downloads WordPress core (version from setup.json)
+#     • Downloads WordPress core (version from setup.json, or inferred via wp-cli when missing)
 #     • Copies wp-config.php and root runtime files from canonical site
 #     • Symlinks git-untracked plugins and uploads from canonical site
 #     • Installs JS deps in each Eightshift package via auto-detected PM
@@ -205,11 +205,22 @@ LOCAL_URL="$(jq -r '.urls.local // empty' "$SETUP_JSON" 2>/dev/null || true)"
 # e.g. "https://infobip.test/" -> "infobip"
 SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.(test|local|dev)$//')"
 
-# WP version from setup.json
-WP_VERSION="$(jq -r '.core // "latest"' "$SETUP_JSON" 2>/dev/null || echo "latest")"
+# WP version from setup.json, with wp-cli fallback when the key is missing.
+WP_VERSION="$(jq -r '.core // empty' "$SETUP_JSON" 2>/dev/null || true)"
+WP_VERSION_SOURCE="setup.json"
 
 # Canonical site path (override with env var)
 CANONICAL_SITE="${CANONICAL_SITE:-$HOME/Sites/$SITE_NAME}"
+
+if [[ -z "$WP_VERSION" ]]; then
+    WP_VERSION="$(infer_wp_core_version "$WORKTREE_ROOT" "$CANONICAL_SITE" || true)"
+    if [[ -n "$WP_VERSION" ]]; then
+        WP_VERSION_SOURCE="wp-cli"
+    else
+        WP_VERSION="latest"
+        WP_VERSION_SOURCE="default"
+    fi
+fi
 
 # wt-link config files (wt-link.json = project-level; wt-link.local.json = gitignored overrides)
 WTL_JSON="$WORKTREE_ROOT/wt-link.json"

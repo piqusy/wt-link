@@ -91,7 +91,7 @@ wt-link rebuild-node
 
 ## What `mount` does
 
-1. **WP core** — Downloads WordPress (version from `setup.json`) or extracts from WP-CLI cache
+1. **WP core** — Downloads WordPress (version from `setup.json`, or inferred via `wp core version` when `core` is missing) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
 3. **Root runtime files** — Copies `wt-link.json`, `wt-link.local.json`, `.env`, and `.env.*` variants from the canonical site when they are missing in the worktree (example templates like `.env.example` are skipped)
 4. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
@@ -119,16 +119,17 @@ Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the 
 
 ## Configuration
 
-`wt-link` reads `setup.json` from the worktree root. Minimum required fields:
+`wt-link` reads `setup.json` from the worktree root. Required field:
 
 ```json
 {
   "urls": {
     "local": "https://mysite.test/"
-  },
-  "core": "6.7.2"
+  }
 }
 ```
+
+If `core` is present, `wt-link` uses it for the WordPress download version. If `core` is missing, `wt-link` tries to infer the version with `wp core version` from the existing worktree or canonical site before falling back to `latest`.
 
 This is the standard [Eightshift](https://eightshift.com) project format.
 
