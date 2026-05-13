@@ -60,10 +60,11 @@ _mount_herd_link() {
             warn "Domain ${BOLD}$SITE_NAME.test${RESET} is currently mounted to another worktree:"
             echo -e "  Active: $reg_active"
             echo ""
-            printf "  Switch domain to this worktree? [y/N] "
+            echo "  Press Enter with no input to accept y (yes)."
+            printf "  Switch domain to this worktree? [Y/n] "
             local answer
             read -r answer
-            if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+            if [[ -n "$answer" && "$answer" != "y" && "$answer" != "Y" ]]; then
                 echo ""
                 warn "Aborted. Use --force to switch without prompting."
                 echo ""
