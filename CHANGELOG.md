@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.11.2] — 2026-05-13
+
+### Fixed
+- Domain-switch prompt now defaults to yes on empty Enter and explains that pressing Enter accepts `y`.
+
 ## [2.11.1] — 2026-05-12
 
 ### Changed
