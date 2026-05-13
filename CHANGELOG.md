@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.11.3] — 2026-05-13
+
+### Fixed
+- Mount no longer crashes under `set -u` when `setup.json` omits `core` and the download spinner prints a WordPress version inferred via wp-cli.
+
 ## [2.11.2] — 2026-05-13
 
 ### Fixed

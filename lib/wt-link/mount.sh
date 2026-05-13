@@ -135,7 +135,7 @@ _mount_wp_core() {
             # Fallback: download via WP-CLI into a temp dir, then rsync
             local tmp_dir
             tmp_dir="$(mktemp -d)"
-            run_with_spinner "Downloading WordPress $WP_VERSION…" \
+            run_with_spinner "Downloading WordPress ${WP_VERSION}…" \
                 bash -c "wp core download --path='$tmp_dir' --version='$WP_VERSION' 2>/dev/null && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
                 || error "Failed to download WordPress $WP_VERSION"
             rm -rf "$tmp_dir"
