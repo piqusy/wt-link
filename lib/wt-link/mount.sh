@@ -425,7 +425,8 @@ _mount_eightshift_pkgs() {
         pkg_name="$(basename "${theme_pkgs[$i]}")"
         log "Build: $pkg_name"
         run_with_spinner "  $pm install…" \
-            run_pm_install "$pm" "$pkg" || warn "  $pm install had warnings"
+            run_pm_install "$pm" "$pkg" \
+            || error "  $pm install failed — see output above"
         success "  node_modules: installed via $pm"
     done
 

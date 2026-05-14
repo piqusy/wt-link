@@ -1,13 +1,40 @@
 # shellcheck shell=bash
 # runtime.sh — Package manager runners and spinner/polling helpers for wt-link.
 
-run_pm_install() {
+pm_lockfile_label() {
+    local pm="$1"
+    case "$pm" in
+        bun) echo "bun.lock or bun.lockb" ;;
+        yarn) echo "yarn.lock" ;;
+        pnpm) echo "pnpm-lock.yaml" ;;
+        npm) echo "package-lock.json or npm-shrinkwrap.json" ;;
+    esac
+}
+
+pm_has_lockfile() {
     local pm="$1" dir="$2"
     case "$pm" in
-        bun)  bun install --cwd="$dir" ;;
-        yarn) yarn install --cwd "$dir" ;;
-        pnpm) pnpm install --dir "$dir" ;;
-        npm)  npm install --prefix "$dir" ;;
+        bun) [[ -f "$dir/bun.lockb" ]] || [[ -f "$dir/bun.lock" ]] ;;
+        yarn) [[ -f "$dir/yarn.lock" ]] ;;
+        pnpm) [[ -f "$dir/pnpm-lock.yaml" ]] ;;
+        npm) [[ -f "$dir/package-lock.json" ]] || [[ -f "$dir/npm-shrinkwrap.json" ]] ;;
+    esac
+}
+
+run_pm_install() {
+    local pm="$1" dir="$2"
+
+    if ! pm_has_lockfile "$pm" "$dir"; then
+        echo "wt-link requires $(pm_lockfile_label "$pm") in $dir before running $pm install." >&2
+        echo "Commit the lockfile first so installs can run with frozen lockfile protection." >&2
+        return 1
+    fi
+
+    case "$pm" in
+        bun)  (cd "$dir" && bun install --frozen-lockfile --ignore-scripts --minimum-release-age=259200) ;;
+        yarn) (cd "$dir" && yarn install --frozen-lockfile --ignore-scripts) ;;
+        pnpm) (cd "$dir" && pnpm install --frozen-lockfile --ignore-scripts) ;;
+        npm)  (cd "$dir" && npm ci --ignore-scripts) ;;
     esac
 }
 

@@ -153,7 +153,7 @@ cmd_rebuild_node() {
 
             run_with_spinner "  $pm install…" \
                 run_pm_install "$pm" "$pkg" \
-                || warn "  $pm install had warnings"
+                || error "  $pm install failed — see output above"
             success "  node_modules: installed via $pm"
 
             run_with_spinner "  $pm run build…" \
