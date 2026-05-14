@@ -30,11 +30,13 @@ run_pm_install() {
         return 1
     fi
 
+    # Keep install behavior close to the canonical project. wt-link rebuilds
+    # downstream repos, so we enforce lockfiles but do not suppress lifecycle scripts.
     case "$pm" in
-        bun)  (cd "$dir" && bun install --frozen-lockfile --ignore-scripts --minimum-release-age=259200) ;;
-        yarn) (cd "$dir" && yarn install --frozen-lockfile --ignore-scripts) ;;
-        pnpm) (cd "$dir" && pnpm install --frozen-lockfile --ignore-scripts) ;;
-        npm)  (cd "$dir" && npm ci --ignore-scripts) ;;
+        bun)  (cd "$dir" && bun install --frozen-lockfile --minimum-release-age=259200) ;;
+        yarn) (cd "$dir" && yarn install --frozen-lockfile) ;;
+        pnpm) (cd "$dir" && pnpm install --frozen-lockfile) ;;
+        npm)  (cd "$dir" && npm ci) ;;
     esac
 }
 
