@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.11.4] — 2026-05-14
+
+### Changed
+- JS package installs now require committed lockfiles and fail fast during mount or rebuild when the lockfile is missing or install fails.
+- Bun installs now keep canonical lifecycle-script behavior while still using `--frozen-lockfile` and a 72-hour minimum release age gate.
+
 ## [2.11.3] — 2026-05-13
 
 ### Fixed
