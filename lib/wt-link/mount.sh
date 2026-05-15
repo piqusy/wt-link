@@ -132,11 +132,16 @@ _mount_wp_core() {
                 || error "Failed to extract WordPress $WP_VERSION from cache"
             rm -rf "$tmp_dir"
         else
-            # Fallback: download via WP-CLI into a temp dir, then rsync
+            # Fallback: download via WP-CLI into a temp dir, then rsync.
+            # Run WP-CLI with extra PHP memory because newer core tarballs can
+            # exhaust the default 128M limit during extraction.
             local tmp_dir
+            local wp_bin
+            local php_memory_limit="${WT_LINK_WP_MEMORY_LIMIT:-512M}"
             tmp_dir="$(mktemp -d)"
+            wp_bin="$(command -v wp)"
             run_with_spinner "Downloading WordPress ${WP_VERSION}…" \
-                bash -c "wp core download --path='$tmp_dir' --version='$WP_VERSION' 2>/dev/null && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
+                bash -c "php -d memory_limit=$php_memory_limit '$wp_bin' core download --path='$tmp_dir' --version='$WP_VERSION' && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
                 || error "Failed to download WordPress $WP_VERSION"
             rm -rf "$tmp_dir"
         fi

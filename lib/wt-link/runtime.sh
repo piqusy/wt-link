@@ -62,7 +62,7 @@ run_pm_start() {
 
 # run_with_spinner <label> <command> [args...]
 #   Runs <command> in the background while showing a braille spinner.
-#   stdout/stderr from the command are captured; on failure the last 5 lines
+#   stdout/stderr from the command are captured; on failure the last 20 lines
 #   are printed to help diagnose the problem.
 run_with_spinner() {
     local label="$1"; shift
@@ -90,7 +90,7 @@ run_with_spinner() {
 
     if [[ $exit_code -ne 0 ]]; then
         warn "$label (exit $exit_code)"
-        tail -5 "$tmp_out" | while IFS= read -r line; do echo "    $line"; done
+        tail -20 "$tmp_out" | while IFS= read -r line; do echo "    $line"; done
     fi
 
     rm -f "$tmp_out"

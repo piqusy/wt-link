@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.11.5] — 2026-05-15
+
+### Fixed
+- WP fallback downloads now run WP-CLI with a higher PHP memory limit so newer WordPress core tarballs do not fail during extraction.
+- Mount failure output now preserves enough WP-CLI lines to show the real fatal error instead of only the truncated stack tail.
+
 ## [2.11.4] — 2026-05-14
 
 ### Changed
