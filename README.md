@@ -129,6 +129,8 @@ Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the 
 }
 ```
 
+Projects that use `urls.develop` instead of `urls.local` are also supported — `local` is preferred when both are present.
+
 If `core` is present, `wt-link` uses it for the WordPress download version. If `core` is missing, `wt-link` tries to infer the version with `wp core version` from the existing worktree or canonical site before falling back to `latest`.
 
 This is the standard [Eightshift](https://eightshift.com) project format.

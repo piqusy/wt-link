@@ -31,13 +31,13 @@
 # CONFIGURATION (optional — auto-detected from setup.json when omitted)
 #   CANONICAL_SITE   Absolute path to the canonical (main) site.
 #                    Default: ~/Sites/<site-name> where <site-name> is
-#                    extracted from setup.json urls.local.
+#                    extracted from setup.json urls.local (or urls.develop).
 
 # shellcheck disable=SC2034  # colour vars used via echo -e
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.11.5"
+WT_LINK_VERSION="2.12.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -197,9 +197,10 @@ fi
 
 SETUP_JSON="$WORKTREE_ROOT/setup.json"
 
-# Extract local URL from setup.json (e.g. "https://infobip.test/")
-LOCAL_URL="$(jq -r '.urls.local // empty' "$SETUP_JSON" 2>/dev/null || true)"
-[[ -n "$LOCAL_URL" ]] || error "Could not read urls.local from setup.json"
+# Extract local URL from setup.json (e.g. "https://infobip.test/").
+# Some projects use urls.develop instead of urls.local — accept both.
+LOCAL_URL="$(jq -r '.urls.local // .urls.develop // empty' "$SETUP_JSON" 2>/dev/null || true)"
+[[ -n "$LOCAL_URL" ]] || error "Could not read urls.local (or urls.develop) from setup.json"
 
 # Derive site name: strip scheme, trailing slash, and .test/.local/.dev TLD
 # e.g. "https://infobip.test/" -> "infobip"

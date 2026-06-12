@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.12.0] — 2026-06-12
+
+### Added
+- `setup.json` URL discovery now accepts `urls.develop` as a fallback when `urls.local` is missing; `local` is preferred when both are present.
+
 ## [2.11.5] — 2026-05-15
 
 ### Fixed
