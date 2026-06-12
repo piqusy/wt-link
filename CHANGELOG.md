@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.12.1] — 2026-06-12
+
+### Fixed
+- WP core download no longer silently produces an empty worktree when `wp-cli` is installed as a shell wrapper — `php <wrapper>` would print the script verbatim and exit 0. Only PHP-based wp-cli binaries get the `php -d memory_limit=` prefix; wrappers are invoked directly.
+
 ## [2.12.0] — 2026-06-12
 
 ### Added

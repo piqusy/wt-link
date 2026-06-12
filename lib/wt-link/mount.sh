@@ -136,15 +136,18 @@ _mount_wp_core() {
             # Run WP-CLI with extra PHP memory because newer core tarballs can
             # exhaust the default 128M limit during extraction.
             local tmp_dir
-            local wp_bin
+            local wp_cmd
             local php_memory_limit="${WT_LINK_WP_MEMORY_LIMIT:-512M}"
             tmp_dir="$(mktemp -d)"
-            wp_bin="$(command -v wp)"
+            wp_cmd="$(wp_download_cmd "$php_memory_limit")" || error "wp-cli not found on PATH"
             run_with_spinner "Downloading WordPress ${WP_VERSION}…" \
-                bash -c "php -d memory_limit=$php_memory_limit '$wp_bin' core download --path='$tmp_dir' --version='$WP_VERSION' && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
+                bash -c "$wp_cmd core download --path='$tmp_dir' --version='$WP_VERSION' && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
                 || error "Failed to download WordPress $WP_VERSION"
             rm -rf "$tmp_dir"
+            # rsync -a copies the mktemp dir's 700 mode onto the worktree root
+            chmod 755 "$WORKTREE_ROOT"
         fi
+        [[ -f "$WP_CORE_MARKER" ]] || error "Core download reported success but wp-load.php is missing — 'wp' on PATH may be a wrapper script that php cannot execute"
         state_set "wp_core_installed" "1"
         success "WP core $WP_VERSION installed"
     fi

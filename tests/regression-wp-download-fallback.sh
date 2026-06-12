@@ -4,9 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOUNT_FILE="$ROOT_DIR/lib/wt-link/mount.sh"
 RUNTIME_FILE="$ROOT_DIR/lib/wt-link/runtime.sh"
+UTILS_FILE="$ROOT_DIR/lib/wt-link/utils.sh"
 
-if ! grep -Fq "php -d memory_limit=" "$MOUNT_FILE"; then
-    echo "Expected wp fallback download to raise PHP memory_limit"
+if ! grep -Fq "memory_limit=" "$UTILS_FILE"; then
+    echo "Expected wp download invocation to raise PHP memory_limit"
+    exit 1
+fi
+
+if ! grep -Fq 'wp_download_cmd' "$MOUNT_FILE"; then
+    echo "Expected wp fallback download to build its invocation via wp_download_cmd"
     exit 1
 fi
 
