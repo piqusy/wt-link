@@ -528,27 +528,60 @@ _mount_verify() {
     echo -e "  Unmount with: ${BOLD}wt-link unmount${RESET}  or  ${BOLD}wlu${RESET}"
 }
 
+# Roll back to the previously-active worktree after a failed mount.
+# cmd_unmount has already cleaned the failed new worktree and repointed the
+# domain at the canonical site; this re-points the domain (and any declared
+# subdomains) back at the previous worktree so a failed switch leaves the user
+# where they started instead of stranded on canonical.
+#
+# Reads the _WT_PREV_ACTIVE global (set by cmd_mount). Globals are required
+# because the EXIT trap may run after cmd_mount's stack frame has unwound
+# (set -e path), where function locals no longer exist.
+_mount_restore_prev() {
+    [[ -n "${_WT_PREV_ACTIVE:-}" && "$_WT_PREV_ACTIVE" != "$WORKTREE_ROOT" && -d "$_WT_PREV_ACTIVE" ]] || return 0
+    if ( cd "$_WT_PREV_ACTIVE" && herd link "$SITE_NAME" ) >/dev/null 2>&1; then
+        registry_set "active" "$_WT_PREV_ACTIVE"
+        if [[ -n "${SUBDOMAIN_LIST:-}" ]]; then
+            local sub
+            for sub in $SUBDOMAIN_LIST; do
+                ( cd "$_WT_PREV_ACTIVE" && herd link "$sub.$SITE_NAME" ) >/dev/null 2>&1 || true
+            done
+        fi
+        echo ""
+        success "Restored previous worktree: $_WT_PREV_ACTIVE"
+        echo ""
+    else
+        registry_clear_active
+        echo ""
+        warn "Could not restore herd link to: $_WT_PREV_ACTIVE"
+        echo -e "  To restore it: ${BOLD}wt-link mount --cwd $_WT_PREV_ACTIVE${RESET}"
+        echo ""
+    fi
+}
+
 # ── Public dispatcher ─────────────────────────────────────────────────────────
 
 cmd_mount() {
-    # Capture previously-active worktree before we displace it, so the ERR trap
-    # can tell the user how to restore it if the mount fails mid-way.
-    local _prev_active
-    _prev_active="$(registry_get active)"
+    # Capture previously-active worktree before we displace it. If this mount
+    # fails part-way, the EXIT trap rolls the new worktree back AND restores the
+    # previous one — so a failed switch leaves the user where they started.
+    _WT_PREV_ACTIVE="$(registry_get active)"
 
+    # EXIT (not ERR), and globals (not locals): error() calls `exit 1`, which
+    # fires EXIT but not ERR; and under set -e the EXIT trap can run after
+    # cmd_mount's frame has unwound, where function locals are gone. An ERR trap
+    # with a local _ec silently skipped rollback on every error() path, leaving
+    # the domain pointed at a half-mounted worktree.
     trap '
-        local _ec=$?
+        _WT_MOUNT_EC=$?
+        [[ $_WT_MOUNT_EC -eq 0 ]] && exit 0
         echo ""
-        warn "Mount failed (exit $_ec) — rolling back…"
+        warn "Mount failed (exit $_WT_MOUNT_EC) — rolling back…"
         echo ""
-        cmd_unmount
-        if [[ -n "$_prev_active" && "$_prev_active" != "$WORKTREE_ROOT" ]]; then
-            echo ""
-            warn "Domain was previously mounted to: $_prev_active"
-            echo -e "  To restore it: ${BOLD}wt-link mount --cwd $_prev_active${RESET}"
-            echo ""
-        fi
-    ' ERR
+        cmd_unmount || true
+        _mount_restore_prev
+        exit $_WT_MOUNT_EC
+    ' EXIT
     _mount_validate
     _mount_herd_link
     _mount_herd_subdomains
@@ -560,5 +593,5 @@ cmd_mount() {
     _mount_mu_plugin
     _mount_eightshift_pkgs
     _mount_verify
-    trap - ERR
+    trap - EXIT
 }
