@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.12.2] — 2026-06-18
+
+### Fixed
+- Switching the domain to a new worktree no longer strands you when the mount fails part-way. The rollback now restores the previously-active worktree (re-pointing the Herd link and any declared subdomains back to it) instead of leaving the domain on the canonical site, so a failed switch returns you to where you started.
+- Mount rollback now actually fires on `error()` failures. The trap was registered on `ERR`, which bash does not run for an explicit `exit 1`, so any failure routed through `error "…"` (e.g. a WP core download or herd-link failure) silently skipped rollback and left the Herd link pointed at a half-mounted worktree with no core/plugins/assets. The trap is now `EXIT`-based with globals, covering both `error()` exits and `set -e` failures.
+
 ## [2.12.1] — 2026-06-12
 
 ### Fixed
