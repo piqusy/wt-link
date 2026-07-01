@@ -119,7 +119,7 @@ Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the 
 
 ## Configuration
 
-`wt-link` reads `setup.json` from the worktree root. Required field:
+`wt-link` reads `setup.json` from the worktree root. Preferred field:
 
 ```json
 {
@@ -131,9 +131,11 @@ Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the 
 
 Projects that use `urls.develop` instead of `urls.local` are also supported — `local` is preferred when both are present.
 
+**`setup.json` is optional.** If it is missing (or has no `urls` entry), `wt-link` infers the site URL as `https://<name>.test/`, where `<name>` is the basename of `CANONICAL_SITE` when set, otherwise the git **main worktree**'s directory name. Using the main worktree name (not the current worktree's) keeps every worktree of a repo on the same `.test` domain — matching how a committed `setup.json` behaves. The resolved URL and its source (`setup.json`, `state`, or `inferred`) are shown in `wt-link status` and cached in the state file on `mount`; correcting `site_url=` in that state file makes an inferred URL stick on later runs.
+
 If `core` is present, `wt-link` uses it for the WordPress download version. If `core` is missing, `wt-link` tries to infer the version with `wp core version` from the existing worktree or canonical site before falling back to `latest`.
 
-This is the standard [Eightshift](https://eightshift.com) project format.
+`setup.json` is the standard [Eightshift](https://eightshift.com) project format.
 
 ### WPML / multisite subdomains
 

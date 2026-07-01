@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # mount.sh — cmd_mount and its 8 private sub-functions for wt-link.
-# Globals used: SITE_NAME, LOCAL_URL, WORKTREE_ROOT, CANONICAL_SITE, WP_CONTENT,
-#   CANONICAL_WP_CONTENT, WP_VERSION, WP_VERSION_SOURCE, STATE_FILE, REGISTRY_FILE,
-#   REGISTRY_DIR, WP_CORE_MARKER, SUBDOMAIN_LIST, FORCE, BOLD, RESET
+# Globals used: SITE_NAME, LOCAL_URL, SITE_URL_SOURCE, WORKTREE_ROOT,
+#   CANONICAL_SITE, WP_CONTENT, CANONICAL_WP_CONTENT, WP_VERSION,
+#   WP_VERSION_SOURCE, STATE_FILE, REGISTRY_FILE, REGISTRY_DIR, WP_CORE_MARKER,
+#   SUBDOMAIN_LIST, FORCE, BOLD, RESET
 #   (set by bin/wt-link before dispatch)
 
 # ── Private sub-functions ─────────────────────────────────────────────────────
@@ -34,6 +35,12 @@ _mount_validate() {
     # Ensure state file always exists after mount (even if everything was already present)
     mkdir -p "$(dirname "$STATE_FILE")"
     touch "$STATE_FILE"
+
+    # Cache the resolved site URL so later runs (and `status`) reuse it. When the
+    # URL was inferred (no setup.json), this lets a manual correction in the
+    # state file take precedence on the next mount.
+    state_set "site_url" "$LOCAL_URL"
+    state_set "site_url_source" "$SITE_URL_SOURCE"
 }
 
 _mount_herd_link() {

@@ -32,12 +32,15 @@
 #   CANONICAL_SITE   Absolute path to the canonical (main) site.
 #                    Default: ~/Sites/<site-name> where <site-name> is
 #                    extracted from setup.json urls.local (or urls.develop).
+#                    When setup.json is missing, the site URL is inferred as
+#                    https://<name>.test/ where <name> is CANONICAL_SITE's
+#                    basename, else the git main-worktree dir name.
 
 # shellcheck disable=SC2034  # colour vars used via echo -e
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.12.2"
+WT_LINK_VERSION="2.13.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -191,20 +194,48 @@ fi
 
 # Gracefully skip non-WP projects (no error — safe to call unconditionally)
 if ! WORKTREE_ROOT="$(find_project_root "$START_DIR")"; then
-    warn "Not a WordPress project (setup.json not found in $START_DIR or any parent directory up to git root) — skipping"
+    warn "Not a WordPress project (no setup.json or wp-content in $START_DIR or any parent directory up to git root) — skipping"
     exit 0
 fi
 
 SETUP_JSON="$WORKTREE_ROOT/setup.json"
 
-# Extract local URL from setup.json (e.g. "https://infobip.test/").
-# Some projects use urls.develop instead of urls.local — accept both.
-LOCAL_URL="$(jq -r '.urls.local // .urls.develop // empty' "$SETUP_JSON" 2>/dev/null || true)"
-[[ -n "$LOCAL_URL" ]] || error "Could not read urls.local (or urls.develop) from setup.json"
+# Resolve the local site URL. Preference order:
+#   1. setup.json urls.local / urls.develop (authoritative when present)
+#   2. a site_url previously cached in this worktree's state file
+#   3. an inferred "https://<site-name>.test/" (see resolve_inferred_site_name)
+# The source is recorded (SITE_URL_SOURCE) for `status` output and re-saved to
+# the state file on mount so a manual correction there sticks on later runs.
+LOCAL_URL=""
+SITE_URL_SOURCE=""
+
+if [[ -f "$SETUP_JSON" ]]; then
+    # Some projects use urls.develop instead of urls.local — accept both.
+    LOCAL_URL="$(jq -r '.urls.local // .urls.develop // empty' "$SETUP_JSON" 2>/dev/null || true)"
+    [[ -n "$LOCAL_URL" ]] && SITE_URL_SOURCE="setup.json"
+fi
+
+if [[ -z "$LOCAL_URL" ]]; then
+    INFERRED_SITE_NAME="$(resolve_inferred_site_name "$WORKTREE_ROOT")"
+    # Read any cached URL from the state file. Its path is keyed on the site
+    # name, so use the inferred (stable) name to locate it before SITE_NAME is
+    # known; fall back to the legacy in-worktree state file.
+    _state_candidate="$REGISTRY_DIR/$INFERRED_SITE_NAME.$(basename "$WORKTREE_ROOT").state"
+    [[ -f "$_state_candidate" ]] || _state_candidate="$WORKTREE_ROOT/.worktree-link-state"
+    CACHED_URL="$(grep '^site_url=' "$_state_candidate" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+    if [[ -n "$CACHED_URL" ]]; then
+        LOCAL_URL="$CACHED_URL"
+        SITE_URL_SOURCE="state"
+    else
+        LOCAL_URL="https://$INFERRED_SITE_NAME.test/"
+        SITE_URL_SOURCE="inferred"
+    fi
+fi
 
 # Derive site name: strip scheme, trailing slash, and .test/.local/.dev TLD
 # e.g. "https://infobip.test/" -> "infobip"
 SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.(test|local|dev)$//')"
+[[ -n "$SITE_NAME" ]] || error "Could not determine a site name (LOCAL_URL='$LOCAL_URL')"
 
 # WP version from setup.json, with wp-cli fallback when the key is missing.
 WP_VERSION="$(jq -r '.core // empty' "$SETUP_JSON" 2>/dev/null || true)"

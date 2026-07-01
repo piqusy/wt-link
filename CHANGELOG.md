@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.13.0] — 2026-07-01
+
+### Added
+- `setup.json` is now optional. When it is missing (or has no `urls` entry), `wt-link` infers the site URL as `https://<name>.test/`, where `<name>` is the basename of `CANONICAL_SITE` when set, otherwise the git **main worktree**'s directory name. Using the main-worktree name (not the current worktree's) keeps every worktree of a repo on the same `.test` domain — matching how a committed `setup.json` behaves.
+- `find_project_root` now falls back to the nearest ancestor containing a `wp-content/` directory when no `setup.json` is present, so WordPress projects without an Eightshift `setup.json` can be mounted too. Projects with neither marker are still skipped as non-WP.
+- The resolved site URL and its source (`setup.json`, `state`, or `inferred`) are shown in `wt-link status` and cached to the state file on `mount`. Correcting `site_url=` in the state file makes an inferred URL stick on later runs.
+
 ## [2.12.2] — 2026-06-18
 
 ### Fixed
