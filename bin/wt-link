@@ -40,7 +40,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.13.0"
+WT_LINK_VERSION="2.14.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -181,6 +181,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 set -- "${FILTERED_ARGS[@]+"${FILTERED_ARGS[@]}"}"
+# Keep the command available during project resolution: `unmount` may be
+# invoked from a sibling or canonical worktree while a different worktree is active.
+COMMAND="${1:-help}"
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # PROJECT RESOLUTION
@@ -236,6 +240,19 @@ fi
 # e.g. "https://infobip.test/" -> "infobip"
 SITE_NAME="$(echo "$LOCAL_URL" | sed -E 's|^https?://||; s|/.*||' | sed -E 's/\.(test|local|dev)$//')"
 [[ -n "$SITE_NAME" ]] || error "Could not determine a site name (LOCAL_URL='$LOCAL_URL')"
+# `unmount` always targets the worktree recorded as active for this site. This
+# allows teardown from the canonical site or any non-mounted sibling worktree.
+REGISTRY_FILE="$REGISTRY_DIR/$SITE_NAME.active"
+if [[ "$COMMAND" == "unmount" ]]; then
+    ACTIVE_WORKTREE="$(registry_get active)"
+    if [[ -n "$ACTIVE_WORKTREE" && "$ACTIVE_WORKTREE" != "$WORKTREE_ROOT" ]]; then
+        ACTIVE_WORKTREE_ROOT="$(find_project_root "$ACTIVE_WORKTREE")" \
+            || error "Registered active worktree is not a WordPress project: $ACTIVE_WORKTREE"
+        WORKTREE_ROOT="$ACTIVE_WORKTREE_ROOT"
+        SETUP_JSON="$WORKTREE_ROOT/setup.json"
+    fi
+fi
+
 
 # WP version from setup.json, with wp-cli fallback when the key is missing.
 WP_VERSION="$(jq -r '.core // empty' "$SETUP_JSON" 2>/dev/null || true)"
@@ -279,9 +296,10 @@ CANONICAL_WP_CONTENT="$CANONICAL_SITE/wp-content"
 
 WP_CORE_MARKER="$WORKTREE_ROOT/wp-load.php"
 
-# REGISTRY_DIR already set before project resolution (for list/starship); keep assignments here
-REGISTRY_FILE="$REGISTRY_DIR/$SITE_NAME.active"
+# REGISTRY_FILE was set after site resolution so `unmount` can resolve its active
+# worktree before its per-worktree state file is selected.
 STATE_FILE="$REGISTRY_DIR/$SITE_NAME.$(basename "$WORKTREE_ROOT").state"
+
 
 # Fall back to legacy state file location (pre-v1.8.0: stored inside the worktree)
 # so that existing mounted worktrees keep working before their next mount/migrate cycle
@@ -293,7 +311,6 @@ fi
 # COMMAND DISPATCH
 # ──────────────────────────────────────────────────────────────────────────────
 
-COMMAND="${1:-help}"
 shift 2>/dev/null || true
 
 FORCE=0

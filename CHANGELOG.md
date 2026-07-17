@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.14.0] — 2026-07-17
+
+### Added
+- `wt-link unmount` now selects the worktree registered as active for the site when invoked from the canonical site or an inactive sibling worktree, so it tears down the mounted worktree instead of the directory from which it was called.
+
 ## [2.13.0] — 2026-07-01
 
 ### Added

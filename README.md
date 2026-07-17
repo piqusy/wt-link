@@ -73,7 +73,7 @@ wt-link mount --force
 # Hard-copy plugins instead of symlinking (filesystem-isolated, faster plugin activation)
 wt-link mount --hard-copy
 
-# Tear down
+# Tear down the active worktree from any project worktree, including canonical
 wt-link unmount
 
 # Check status
@@ -107,7 +107,7 @@ A state file at `~/.config/wt-link/<site>.<worktree-basename>.state` tracks ever
 
 ## What `unmount` does
 
-Reverses all of the above: removes symlinks, hard-copied plugin directories, copied root runtime files, WP core files, wp-config, restores the Herd link to the canonical site, and deletes the state file.
+Reverses all of the above in the worktree currently registered as active for the site, regardless of which project worktree invokes the command. Removes symlinks, hard-copied plugin directories, copied root runtime files, WP core files, and `wp-config.php`; restores the Herd link to the canonical site; then deletes the state file.
 
 ## What `rebuild-composer` does
 
