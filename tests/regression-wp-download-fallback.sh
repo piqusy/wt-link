@@ -21,6 +21,11 @@ if grep -F "core download --path=" "$MOUNT_FILE" | grep -Fq "2>/dev/null"; then
     exit 1
 fi
 
+if ! grep -Fq 'wp_cache_zip' "$MOUNT_FILE" || ! grep -Fq "unzip -q" "$MOUNT_FILE"; then
+    echo "Expected cached WordPress zip archives to be extracted before downloading"
+    exit 1
+fi
+
 if ! grep -Fq 'tail -20 "$tmp_out"' "$RUNTIME_FILE"; then
     echo "Expected spinner failure output to keep the last 20 lines"
     exit 1

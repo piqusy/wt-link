@@ -24,9 +24,9 @@
 #   wt-link status             Show what is linked / installed
 #   wt-link mount --cwd PATH   Mount a specific worktree directory
 #
-# REQUIREMENTS
-#   wp-cli, herd, composer, jq
-#   Node package manager: bun, npm, yarn, or pnpm (auto-detected per package)
+#   wp-cli, herd
+#   Composer only when an Eightshift package needs dependencies installed
+#   Node package manager: bun, npm, yarn, or pnpm for Eightshift package assets
 #
 # CONFIGURATION (optional — auto-detected from setup.json when omitted)
 #   CANONICAL_SITE   Absolute path to the canonical (main) site.
@@ -40,7 +40,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.14.0"
+WT_LINK_VERSION="2.15.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS

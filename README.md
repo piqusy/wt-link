@@ -29,9 +29,9 @@ sudo cp -r lib/wt-link /usr/local/lib/
 |------|---------|
 | [WP-CLI](https://wp-cli.org) (`wp`) | WordPress core download |
 | [Laravel Herd](https://herd.laravel.com) (`herd`) | Local domain management |
-| [Composer](https://getcomposer.org) | PHP dependency install (fallback only) |
-| `bun` / `npm` / `yarn` / `pnpm` | JS dependency install and asset build (auto-detected) |
-| `jq` | Parse `setup.json` |
+| [Composer](https://getcomposer.org) | PHP dependency install for Eightshift packages without a reusable `vendor/` directory |
+| `bun` / `npm` / `yarn` / `pnpm` | JS dependency install and asset build for Eightshift packages (auto-detected) |
+| `jq` | Parse optional `setup.json` and `wt-link*.json` configuration |
 | `rsync` | File sync (macOS built-in) |
 
 ## Usage

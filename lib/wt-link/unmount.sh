@@ -133,6 +133,9 @@ cmd_unmount() {
         fi
     fi
     success "Removed $removed_plugins plugin links/copies"
+    if [[ $has_state -eq 1 && "$(state_get plugins_dir_created)" == "1" ]]; then
+        rmdir "$plugins_dir" 2>/dev/null && success "Empty plugin directory removed"
+    fi
 
     # 4. Remove vendor/, node_modules, and built public/ from Eightshift packages ─
     _unmount_remove_packages() {

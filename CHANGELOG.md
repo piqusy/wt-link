@@ -1,5 +1,14 @@
 # Changelog
 
+
+## [2.15.0] — 2026-07-29
+
+### Added
+- Standard WordPress worktrees now mount without Eightshift packages or Composer. Missing plugin directories are created for canonical plugin links and removed again on unmount when empty.
+
+### Fixed
+- Mount now uses a matching cached WP-CLI `.zip` core archive when available, avoiding a failed re-download for standard projects.
+
 ## [2.14.0] — 2026-07-17
 
 ### Added

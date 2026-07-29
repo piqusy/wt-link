@@ -11,7 +11,6 @@
 _mount_validate() {
     require_cmd wp
     require_cmd herd
-    require_cmd composer
 
     log "Mounting worktree as '$SITE_NAME' local site"
     echo "  Worktree : $WORKTREE_ROOT"
@@ -130,13 +129,18 @@ _mount_wp_core() {
         success "WP core already present ($(wp_clean core version --path="$WORKTREE_ROOT" || echo 'unknown'))"
     else
         local wp_cache_gz="$HOME/.wp-cli/cache/core/wordpress-${WP_VERSION}-en_US.tar.gz"
+        local wp_cache_zip="$HOME/.wp-cli/cache/core/wordpress-${WP_VERSION}-en_US.zip"
 
-        if [[ -f "$wp_cache_gz" ]]; then
+        if [[ -f "$wp_cache_gz" || -f "$wp_cache_zip" ]]; then
             local tmp_dir
             tmp_dir="$(mktemp -d)"
-            run_with_spinner "Extracting WordPress $WP_VERSION from cache…" \
-                bash -c "tar xzf '$wp_cache_gz' -C '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'" \
-                || error "Failed to extract WordPress $WP_VERSION from cache"
+            if [[ -f "$wp_cache_gz" ]]; then
+                run_with_spinner "Extracting WordPress $WP_VERSION from cache…" \
+                    bash -c "tar xzf '$wp_cache_gz' -C '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'"
+            else
+                run_with_spinner "Extracting WordPress $WP_VERSION from cache…" \
+                    bash -c "unzip -q '$wp_cache_zip' -d '$tmp_dir' && rsync -a --exclude='wp-content' '$tmp_dir/wordpress/' '$WORKTREE_ROOT/'"
+            fi || error "Failed to extract WordPress $WP_VERSION from cache"
             rm -rf "$tmp_dir"
         else
             # Fallback: download via WP-CLI into a temp dir, then rsync.
@@ -229,6 +233,11 @@ _mount_plugins() {
     if [[ $total -eq 0 ]]; then
         success "Plugins: nothing to link"
         return 0
+    fi
+
+    if [[ ! -d "$WP_CONTENT/plugins" ]]; then
+        mkdir -p "$WP_CONTENT/plugins" || error "Failed to create plugin directory: $WP_CONTENT/plugins"
+        state_set "plugins_dir_created" "1"
     fi
 
     local new_count=0
@@ -409,6 +418,7 @@ _mount_eightshift_pkgs() {
             if [[ -f "$pkg/vendor/autoload.php" ]]; then
                 success "  composer: vendor/ already installed locally"
             else
+                require_cmd composer
                 run_with_spinner "  composer install…" \
                     composer install --no-interaction --working-dir="$pkg" 2>/dev/null || warn "  composer install had warnings"
                 success "  composer: done"

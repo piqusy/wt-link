@@ -72,7 +72,7 @@ find_eightshift_packages() {
             fi
         done
     done
-    printf '%s\n' "${packages[@]}"
+    ((${#packages[@]})) && printf '%s\n' "${packages[@]}"
 }
 
 # Plugins not tracked in git — need to be symlinked from canonical.
