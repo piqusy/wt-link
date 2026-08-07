@@ -35,12 +35,18 @@
 #                    When setup.json is missing, the site URL is inferred as
 #                    https://<name>.test/ where <name> is CANONICAL_SITE's
 #                    basename, else the git main-worktree dir name.
+#                    WP version, when setup.json has no `core` key, is
+#                    inferred from the canonical site's Dockerfile FROM line,
+#                    then via wp-cli (worktree or canonical wp-load.php),
+#                    before falling back to "latest". Dockerfile is checked
+#                    first so a stale canonical install doesn't shadow the
+#                    version the project is actually targeting.
 
 # shellcheck disable=SC2034  # colour vars used via echo -e
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.15.0"
+WT_LINK_VERSION="2.16.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -262,12 +268,22 @@ WP_VERSION_SOURCE="setup.json"
 CANONICAL_SITE="${CANONICAL_SITE:-$HOME/Sites/$SITE_NAME}"
 
 if [[ -z "$WP_VERSION" ]]; then
-    WP_VERSION="$(infer_wp_core_version "$WORKTREE_ROOT" "$CANONICAL_SITE" || true)"
+    # Dockerfile is checked before wp-cli: it declares the *target* version
+    # even when the canonical site's on-disk core is stale (e.g. mid dependency
+    # update, before canonical itself has been re-mounted/upgraded) — trusting
+    # whatever happens to be installed there would silently downgrade the
+    # mount instead of picking up the version the project is moving to.
+    WP_VERSION="$(infer_wp_core_version_from_dockerfile "$CANONICAL_SITE" || true)"
     if [[ -n "$WP_VERSION" ]]; then
-        WP_VERSION_SOURCE="wp-cli"
+        WP_VERSION_SOURCE="dockerfile"
     else
-        WP_VERSION="latest"
-        WP_VERSION_SOURCE="default"
+        WP_VERSION="$(infer_wp_core_version "$WORKTREE_ROOT" "$CANONICAL_SITE" || true)"
+        if [[ -n "$WP_VERSION" ]]; then
+            WP_VERSION_SOURCE="wp-cli"
+        else
+            WP_VERSION="latest"
+            WP_VERSION_SOURCE="default"
+        fi
     fi
 fi
 

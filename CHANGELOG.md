@@ -1,6 +1,14 @@
 # Changelog
 
 
+## [2.16.0] — 2026-08-07
+
+### Added
+- When `setup.json` has no `core` key, `wt-link` now also infers the WordPress version from the canonical site's `Dockerfile` (its `FROM wordpress:<version>-...` base image tag), checked before the existing wp-cli inference — so a stale canonical install doesn't shadow the version the project is actually targeting. Still falls back to `latest` if neither source resolves a version.
+
+### Fixed
+- WP core download no longer silently keeps the default 128M PHP memory limit when `wp` resolves to a custom wrapper that execs php directly (e.g. a deprecation-suppressing shim) — such wrappers don't forward `WP_CLI_PHP_ARGS`, the mechanism previously used to raise the limit, so PharData extraction could fail on larger core tarballs. The limit is now applied via `PHPRC`, which PHP itself reads regardless of what kind of wrapper `wp` resolves to.
+
 ## [2.15.0] — 2026-07-29
 
 ### Added

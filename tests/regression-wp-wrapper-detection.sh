@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Regression: `command -v wp` resolving to a bash wrapper around wp-cli must
-# not be invoked as `php <wrapper>` — PHP prints the wrapper text verbatim and
-# exits 0, so core download silently produces nothing and mount reports
-# success on an empty worktree (Herd then 404s).
+# Regression: `command -v wp` resolving to a custom wrapper (e.g. a
+# deprecation-suppressing shim that execs php directly) must still receive
+# the raised PHP memory limit. WP_CLI_PHP_ARGS is only honored by the
+# official wp-cli launcher script — a wrapper that execs php itself silently
+# drops it, leaving the default 128M limit and failing PharData extraction
+# on larger core tarballs. PHPRC is read by the php binary itself regardless
+# of the wrapper, so wp_download_cmd must use that instead.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOUNT_FILE="$ROOT_DIR/lib/wt-link/mount.sh"
@@ -14,38 +17,40 @@ error() { echo "$*" >&2; exit 1; }
 source "$ROOT_DIR/lib/wt-link/utils.sh"
 
 fake_bin="$(mktemp -d)"
-trap 'rm -rf "$fake_bin"' EXIT
+ini_dir="$(mktemp -d)"
+trap 'rm -rf "$fake_bin" "$ini_dir"' EXIT
 
-# Case 1: wp is a bash wrapper — must be invoked directly, never via php
+# A wrapper that ignores WP_CLI_PHP_ARGS entirely (like a real-world
+# deprecation-suppressing shim would) but still honors PHPRC, since that is
+# read by the php binary itself, not forwarded by the wrapper.
 cat > "$fake_bin/wp" <<'EOF'
 #!/usr/bin/env bash
-exec /usr/bin/true "$@"
+php -r 'echo ini_get("memory_limit");'
 EOF
 chmod +x "$fake_bin/wp"
 
-cmd="$(PATH="$fake_bin:$PATH" wp_download_cmd 512M)"
+cmd="$(PATH="$fake_bin:$PATH" wp_download_cmd 512M "$ini_dir")"
+
 case "$cmd" in
     php\ *)
-        echo "FAIL: bash wrapper wp would be executed via php (silent no-op)"
+        echo "FAIL: wrapper wp would be executed via php (silent no-op)"
         exit 1
         ;;
 esac
 
-# Case 2: wp is a PHP script/phar — php -d memory_limit prefix must be kept
-cat > "$fake_bin/wp" <<'EOF'
-#!/usr/bin/env php
-<?php exit(0);
-EOF
-chmod +x "$fake_bin/wp"
-
-cmd="$(PATH="$fake_bin:$PATH" wp_download_cmd 512M)"
 case "$cmd" in
-    php\ -d\ memory_limit=512M*) ;;
+    *PHPRC=*) ;;
     *)
-        echo "FAIL: PHP wp-cli no longer gets the raised memory_limit prefix"
+        echo "FAIL: expected wp_download_cmd to set PHPRC so the limit survives wrapper scripts"
         exit 1
         ;;
 esac
+
+[[ -f "$ini_dir/php.ini" ]] || error "FAIL: expected wp_download_cmd to write a php.ini into ini_dir"
+grep -Fq "memory_limit = 512M" "$ini_dir/php.ini" || error "FAIL: php.ini does not raise memory_limit"
+
+reported="$(bash -c "$cmd")"
+[[ "$reported" == "512M" ]] || error "FAIL: wrapper's php process did not see the raised memory_limit (got '$reported')"
 
 # Mount must verify core actually landed, regardless of invocation path
 if ! grep -Fq 'WP_CORE_MARKER" ]] || error' "$MOUNT_FILE"; then
@@ -53,4 +58,4 @@ if ! grep -Fq 'WP_CORE_MARKER" ]] || error' "$MOUNT_FILE"; then
     exit 1
 fi
 
-echo "PASS: wrapper wp invoked directly, php wp keeps memory prefix, mount asserts core landed"
+echo "PASS: wp_download_cmd raises memory_limit via PHPRC, surviving wrapper scripts that drop WP_CLI_PHP_ARGS"

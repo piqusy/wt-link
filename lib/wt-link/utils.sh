@@ -11,19 +11,18 @@ require_pm() {
 
 # Build the wp-cli invocation prefix for core download, with a raised PHP
 # memory limit. `command -v wp` may resolve to a shell wrapper around wp-cli
-# rather than the PHP file itself — running `php <wrapper>` makes PHP print
-# the wrapper text verbatim and exit 0, silently downloading nothing. Only
-# prefix with `php -d` when the resolved binary is actually a PHP script;
-# otherwise invoke it directly and pass the limit via WP_CLI_PHP_ARGS
-# (honored by the official wp launcher, harmless elsewhere).
+# (e.g. a deprecation-suppressing shim that execs php directly) rather than
+# the official launcher, and such wrappers don't forward WP_CLI_PHP_ARGS —
+# the limit is silently dropped, leaving the default 128M to blow up
+# PharData extraction on larger core tarballs. PHPRC is read by the php
+# binary itself regardless of what wrapper `wp` resolves to, so write the
+# limit to a php.ini in the caller-provided scratch dir and point PHPRC at
+# it instead. Caller owns ini_dir and must create/clean it up.
 wp_download_cmd() {
-    local memory_limit="$1" wp_bin
+    local memory_limit="$1" ini_dir="$2" wp_bin
     wp_bin="$(command -v wp)" || return 1
-    if head -1 "$wp_bin" | grep -q 'php'; then
-        printf "php -d memory_limit=%s '%s'" "$memory_limit" "$wp_bin"
-    else
-        printf "WP_CLI_PHP_ARGS='-d memory_limit=%s' '%s'" "$memory_limit" "$wp_bin"
-    fi
+    printf 'memory_limit = %s\n' "$memory_limit" > "$ini_dir/php.ini"
+    printf "PHPRC='%s' '%s'" "$ini_dir" "$wp_bin"
 }
 
 # wp-cli outputs deprecation notices to stdout (not stderr) starting with a
@@ -48,4 +47,21 @@ infer_wp_core_version() {
     done
 
     return 1
+}
+
+# Second-route fallback: read the WordPress version off the canonical site's
+# Dockerfile base image tag (e.g. "FROM wordpress:7.0.2-php8.4-fpm" -> "7.0.2").
+# Unlike infer_wp_core_version, this needs no wp-cli and no core files on disk
+# yet — useful when the canonical site has never had WP core downloaded
+# locally, so its wp-load.php doesn't exist for wp-cli to introspect.
+infer_wp_core_version_from_dockerfile() {
+    local dockerfile="$1/Dockerfile" tag
+
+    [[ -f "$dockerfile" ]] || return 1
+
+    tag="$(grep -m1 -E '^FROM[[:space:]]+wordpress:' "$dockerfile" \
+        | sed -E 's/^FROM[[:space:]]+wordpress:([^[:space:]]+).*/\1/')"
+    [[ -n "$tag" ]] || return 1
+
+    printf '%s\n' "${tag%%-*}"
 }

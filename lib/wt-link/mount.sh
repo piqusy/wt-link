@@ -119,10 +119,12 @@ _mount_herd_link() {
 }
 
 _mount_wp_core() {
-    if [[ "$WP_VERSION_SOURCE" == "wp-cli" ]]; then
-        step "setup.json core missing — using WordPress $WP_VERSION inferred via wp-cli"
+    if [[ "$WP_VERSION_SOURCE" == "dockerfile" ]]; then
+        step "setup.json core missing — using WordPress $WP_VERSION from canonical Dockerfile"
+    elif [[ "$WP_VERSION_SOURCE" == "wp-cli" ]]; then
+        step "setup.json core missing and no canonical Dockerfile — using WordPress $WP_VERSION inferred via wp-cli"
     elif [[ "$WP_VERSION_SOURCE" == "default" ]]; then
-        warn "setup.json core missing and wp-cli could not infer a version — falling back to latest"
+        warn "setup.json core missing and Dockerfile/wp-cli could not infer a version — falling back to latest"
     fi
 
     if [[ -f "$WP_CORE_MARKER" ]]; then
@@ -145,16 +147,19 @@ _mount_wp_core() {
         else
             # Fallback: download via WP-CLI into a temp dir, then rsync.
             # Run WP-CLI with extra PHP memory because newer core tarballs can
-            # exhaust the default 128M limit during extraction.
-            local tmp_dir
+            # exhaust the default 128M limit during extraction. ini_dir is
+            # separate from tmp_dir (the download destination) so the
+            # generated php.ini never gets rsync'd into the worktree.
+            local tmp_dir ini_dir
             local wp_cmd
             local php_memory_limit="${WT_LINK_WP_MEMORY_LIMIT:-512M}"
             tmp_dir="$(mktemp -d)"
-            wp_cmd="$(wp_download_cmd "$php_memory_limit")" || error "wp-cli not found on PATH"
+            ini_dir="$(mktemp -d)"
+            wp_cmd="$(wp_download_cmd "$php_memory_limit" "$ini_dir")" || error "wp-cli not found on PATH"
             run_with_spinner "Downloading WordPress ${WP_VERSION}…" \
                 bash -c "$wp_cmd core download --path='$tmp_dir' --version='$WP_VERSION' && rsync -a --exclude='wp-content' '$tmp_dir/' '$WORKTREE_ROOT/'" \
                 || error "Failed to download WordPress $WP_VERSION"
-            rm -rf "$tmp_dir"
+            rm -rf "$tmp_dir" "$ini_dir"
             # rsync -a copies the mktemp dir's 700 mode onto the worktree root
             chmod 755 "$WORKTREE_ROOT"
         fi
