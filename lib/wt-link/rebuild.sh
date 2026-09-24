@@ -79,7 +79,7 @@ cmd_rebuild_composer() {
 
         if [[ $rebuilt -eq 0 ]]; then
             run_with_spinner "  composer install…" \
-                composer install --no-interaction --working-dir="$pkg" 2>/dev/null \
+                composer install --no-interaction --working-dir="$pkg" ${COMPOSER_INSTALL_FLAGS[@]+"${COMPOSER_INSTALL_FLAGS[@]}"} 2>/dev/null \
                 || warn "  composer install had warnings"
             success "  composer install done"
         fi

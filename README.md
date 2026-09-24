@@ -37,21 +37,23 @@ sudo cp -r lib/wt-link /usr/local/lib/
 ## Usage
 
 ```
-wt-link <command> [--cwd PATH] [--force] [--yes] [--hard-copy]
+wt-link <command> [--cwd PATH] [--force] [--yes] [--hard-copy] [--composer-flag=ARG] [--bun-flag=ARG]
 
 Commands:
   mount             Set up a git worktree as a fully working local Herd site
   unmount           Tear down and restore the canonical site
   status            Show current link status
   list              Show all registered sites and their active worktrees
-  rebuild-composer  Re-run composer install for all Eightshift packages
-  rebuild-node      Re-run <pm> install + build for all Eightshift packages
+  rebuild-composer  Copy canonical vendor/ or run composer install (themes by default)
+  rebuild-node      Start the first theme watcher; --build installs deps and builds assets
 
 Options:
   --cwd PATH      Run against a specific worktree directory (default: current dir)
   --force         Switch domain to this worktree without prompting (shows a notice)
   --yes / -y      Proceed non-interactively with no output (for hook contexts)
   --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
+  --composer-flag=ARG  Pass ARG to composer install on mount/rebuild-composer (repeatable)
+  --bun-flag=ARG       Pass ARG to bun install on mount/rebuild-node --build (repeatable)
   --no-indicator  Skip injecting the worktree branch indicator into the site
 ```
 
@@ -86,7 +88,11 @@ wt-link list
 wt-link rebuild-composer
 
 # Rebuild JS assets after a package.json change
-wt-link rebuild-node
+wt-link rebuild-node --build
+
+# Repeat each option to pass multiple install arguments
+wt-link rebuild-composer --composer-flag=--ignore-platform-req=php --composer-flag=--no-scripts
+wt-link rebuild-node --build --bun-flag=--ignore-scripts --bun-flag=--no-progress
 ```
 
 ## What `mount` does
@@ -111,11 +117,11 @@ Reverses all of the above in the worktree currently registered as active for the
 
 ## What `rebuild-composer` does
 
-Re-runs `composer install` for every Eightshift package in the worktree. Useful after pulling changes that add or update PHP dependencies.
+Copies `vendor/` from the canonical site when available, otherwise runs `composer install` for each matching package (themes by default; `--plugins` or `--all` selects other targets). Composer install flags have no effect when `vendor/` is copied.
 
 ## What `rebuild-node` does
 
-Re-runs `<pm> install` and `<pm> run build` for every Eightshift package in the worktree. Useful after pulling changes that add or update JS dependencies or after a failed build.
+Starts the watcher for the first matching theme by default. With `--build`, removes `node_modules/` and `public/`, then runs `<pm> install` and `<pm> run build` for each matching package (themes by default; `--plugins` or `--all` selects other targets). Bun install flags do not reach the build or watcher.
 
 ## Configuration
 

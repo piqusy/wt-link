@@ -46,7 +46,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.16.0"
+WT_LINK_VERSION="2.17.0"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -126,6 +126,9 @@ case "${1:-help}" in
         echo ""
         echo "Options:"
         echo "  --cwd PATH    Run against a specific worktree directory (default: current directory)"
+        echo "  --composer-flag=ARG  Pass ARG to composer install on mount/rebuild-composer (repeatable)"
+        echo "                       Copied vendor/ skips composer install, even with flags"
+        echo "  --bun-flag=ARG       Pass ARG to bun install on mount/rebuild-node --build (repeatable)"
         echo "  --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
   --no-indicator  Skip injecting the worktree branch indicator into the site"
         echo "  --plugins     Target plugin eightshift packages instead of themes"
@@ -149,6 +152,8 @@ case "${1:-help}" in
         echo "  wt-link mount --cwd ~/Sites/myproject.feature-branch"
         echo "  CANONICAL_SITE=~/Sites/myproject wt-link mount"
         echo "  wt-link mount --hard-copy"
+        echo "  wt-link rebuild-composer --composer-flag=--ignore-platform-req=php --composer-flag=--no-scripts"
+        echo "  wt-link rebuild-node --build --bun-flag=--ignore-scripts --bun-flag=--no-progress"
         echo "  wt-link unmount"
         echo "  wt-link status"
         exit 0
@@ -169,6 +174,8 @@ esac
 
 EXPLICIT_CWD=""
 FILTERED_ARGS=()
+COMPOSER_INSTALL_FLAGS=()
+BUN_INSTALL_FLAGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --cwd)
@@ -179,6 +186,19 @@ while [[ $# -gt 0 ]]; do
         --cwd=*)
             EXPLICIT_CWD="${1#--cwd=}"
             shift
+            ;;
+        --composer-flag=*)
+            [[ -n "${1#*=}" ]] || error "--composer-flag requires --composer-flag=ARG"
+            COMPOSER_INSTALL_FLAGS+=("${1#*=}")
+            shift
+            ;;
+        --bun-flag=*)
+            [[ -n "${1#*=}" ]] || error "--bun-flag requires --bun-flag=ARG"
+            BUN_INSTALL_FLAGS+=("${1#*=}")
+            shift
+            ;;
+        --composer-flag|--bun-flag)
+            error "$1 requires $1=ARG"
             ;;
         *)
             FILTERED_ARGS+=("$1")
@@ -345,6 +365,13 @@ for arg in "$@"; do
     [[ "$arg" == "--all" ]] && ALL=1
     [[ "$arg" == "--no-indicator" ]] && NO_INDICATOR=1
 done
+
+if [[ ${#COMPOSER_INSTALL_FLAGS[@]} -gt 0 ]]; then
+    [[ "$COMMAND" == "mount" || "$COMMAND" == "rebuild-composer" ]] || error "--composer-flag is only valid with mount or rebuild-composer"
+fi
+if [[ ${#BUN_INSTALL_FLAGS[@]} -gt 0 ]]; then
+    [[ "$COMMAND" == "mount" || ( "$COMMAND" == "rebuild-node" && "$BUILD" -eq 1 ) ]] || error "--bun-flag is only valid with mount or rebuild-node --build"
+fi
 
 case "$COMMAND" in
     mount)            cmd_mount ;;

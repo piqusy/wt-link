@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.17.0] — 2026-09-24
+
+### Added
+- `--composer-flag=ARG` and `--bun-flag=ARG` pass repeatable arguments to dependency installs during mount and rebuild. Composer flags apply only when `vendor/` cannot be copied from the canonical site; Bun flags apply to installs, not builds or watchers.
 
 ## [2.16.0] — 2026-08-07
 

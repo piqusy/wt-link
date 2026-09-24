@@ -425,7 +425,7 @@ _mount_eightshift_pkgs() {
             else
                 require_cmd composer
                 run_with_spinner "  composer install…" \
-                    composer install --no-interaction --working-dir="$pkg" 2>/dev/null || warn "  composer install had warnings"
+                    composer install --no-interaction --working-dir="$pkg" ${COMPOSER_INSTALL_FLAGS[@]+"${COMPOSER_INSTALL_FLAGS[@]}"} 2>/dev/null || warn "  composer install had warnings"
                 success "  composer: done"
             fi
         fi
