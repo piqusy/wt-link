@@ -228,7 +228,7 @@ _mount_root_runtime_files() {
 }
 
 _mount_plugins() {
-    # Globals: HARD_COPY (0=symlink default, 1=parallel hard-copy)
+    # Globals: HARD_COPY (0=symlink default, 1=parallel independent copy)
     local plugins=()
     while IFS= read -r p; do
         [[ -n "$p" ]] && plugins+=("$p")
@@ -248,7 +248,7 @@ _mount_plugins() {
     local new_count=0
 
     if [[ "$HARD_COPY" -eq 1 ]]; then
-        # Parallel hard-copy: build a list of "src:::dest" pairs then xargs -P8
+        # Copy in parallel, using copy-on-write clones where supported.
         local tmp_pairs
         tmp_pairs="$(mktemp)"
         for plugin_path in "${plugins[@]}"; do
@@ -263,17 +263,19 @@ _mount_plugins() {
         done
 
         if [[ $new_count -gt 0 ]]; then
-            run_with_spinner "Hard-copying $new_count plugins (parallel)…" \
+            # shellcheck disable=SC2016
+            run_with_spinner "Copying $new_count plugins (copy-on-write when supported)…" \
                 bash -c '
                     xargs -P8 -I"{}" bash -c '"'"'
-                        src="${1%%:::*}"; dest="${1##*:::}"
-                        if [[ -d "$src" ]]; then cp -Rl "$src" "$dest"
-                        else cp -l "$src" "$dest"; fi
-                    '"'"' _ "{}" < "$1"
-                ' _ "$tmp_pairs" \
+                        lib_dir="$1"; pair="$2"
+                        source "$lib_dir/utils.sh"
+                        src="${pair%%:::*}"; dest="${pair##*:::}"
+                        copy_tree_cow "$src" "$dest"
+                    '"'"' _ "$1" "{}" < "$2"
+                ' _ "$LIB_DIR" "$tmp_pairs" \
                 || warn "  Some plugins failed to copy — check above"
 
-            # Record each hard-copied plugin in state for unmount
+            # Record copied plugins so unmount removes only what mount created.
             while IFS= read -r pair; do
                 local dest_name
                 dest_name="$(basename "${pair##*:::}")"
@@ -281,7 +283,7 @@ _mount_plugins() {
             done < "$tmp_pairs"
         fi
         rm -f "$tmp_pairs"
-        success "Plugins: $new_count newly hard-copied (parallel)"
+        success "Plugins: $new_count newly copied (parallel)"
     else
         # Default: symlink each plugin — fast enough to not need a spinner
         step "Symlinking $total untracked plugins…"
@@ -386,22 +388,20 @@ _mount_eightshift_pkgs() {
         [[ "$pkg_type" == "theme" ]] && canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
         [[ "$pkg_type" == "plugin" ]] && canonical_pkg="$CANONICAL_WP_CONTENT/plugins/$pkg_name"
 
-        # composer deps — hardlink-copy vendor/ and vendor-prefixed/ from canonical
-        # (cp -Rl creates a hardlink tree: zero extra disk on APFS, but PHP __FILE__
-        #  resolves to the real worktree path — no symlink indirection issues)
+        # Copy Composer dependencies independently, using copy-on-write when supported.
         local composer_ok=0
         for vendor_dir in vendor vendor-prefixed; do
             local dest="$pkg/$vendor_dir"
             local src="$canonical_pkg/$vendor_dir"
 
             if [[ -L "$dest" ]]; then
-                # Legacy symlink — replace with hardlink copy
+                # Legacy symlink — replace with an independent copy
                 rm "$dest"
                 if [[ -d "$src" ]]; then
-                    run_with_spinner "  $vendor_dir/: converting symlink → hardlink copy…" \
-                        cp -Rl "$src" "$dest" \
-                        || { warn "  $vendor_dir/: hardlink copy failed, keeping without vendor"; continue; }
-                    success "  $vendor_dir/: converted from symlink to hardlink copy"
+                    run_with_spinner "  $vendor_dir/: replacing symlink with independent copy…" \
+                        copy_tree_cow "$src" "$dest" \
+                        || { warn "  $vendor_dir/: copy failed, keeping without vendor"; continue; }
+                    success "  $vendor_dir/: replaced symlink with independent copy"
                     state_set "vendor_copied_${pkg_name}_${vendor_dir}" "1"
                     [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
                 fi
@@ -409,10 +409,10 @@ _mount_eightshift_pkgs() {
                 [[ "$vendor_dir" == "vendor" ]] && { success "  vendor/: already present (local copy)"; composer_ok=1; }
                 [[ "$vendor_dir" == "vendor-prefixed" ]] && success "  vendor-prefixed/: already present (local copy)"
             elif [[ -d "$src" ]]; then
-                run_with_spinner "  $vendor_dir/: hardlink copy from canonical…" \
-                    cp -Rl "$src" "$dest" \
-                    || { warn "  $vendor_dir/: hardlink copy failed — will fall back to composer install"; continue; }
-                success "  $vendor_dir/: hardlink copy from canonical"
+                run_with_spinner "  $vendor_dir/: copying from canonical (copy-on-write when supported)…" \
+                    copy_tree_cow "$src" "$dest" \
+                    || { warn "  $vendor_dir/: copy failed — will fall back to composer install"; continue; }
+                success "  $vendor_dir/: independent copy from canonical"
                 state_set "vendor_copied_${pkg_name}_${vendor_dir}" "1"
                 [[ "$vendor_dir" == "vendor" ]] && composer_ok=1
             fi

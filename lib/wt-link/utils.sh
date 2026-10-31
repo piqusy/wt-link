@@ -8,6 +8,34 @@ require_cmd() {
 require_pm() {
     command -v "$1" &>/dev/null || error "Package manager '$1' not found. Install it or ensure it is on PATH."
 }
+# Copy a file or directory tree without sharing inodes with the source.
+# Use filesystem copy-on-write clones where the platform supports them, then
+# fall back to a regular independent copy if cloning is unavailable.
+copy_tree_cow() {
+    local source="$1" destination="$2"
+
+    [[ -e "$source" || -L "$source" ]] || return 1
+    [[ ! -e "$destination" && ! -L "$destination" ]] || return 1
+
+    case "$(uname -s)" in
+        Darwin)
+            /bin/cp -cR "$source" "$destination" && return 0
+            ;;
+        Linux)
+            command cp --reflink=auto -R "$source" "$destination" && return 0
+            ;;
+    esac
+
+    if [[ -e "$destination" || -L "$destination" ]]; then
+        rm -r "$destination" || return 1
+    fi
+    command cp -R "$source" "$destination" && return 0
+    if [[ -e "$destination" || -L "$destination" ]]; then
+        rm -r "$destination"
+    fi
+    return 1
+}
+
 
 # Build the wp-cli invocation prefix for core download, with a raised PHP
 # memory limit. `command -v wp` may resolve to a shell wrapper around wp-cli

@@ -46,7 +46,7 @@ cmd_rebuild_composer() {
 
         log "  [$pkg_type] $pkg_name"
 
-        # Resolve canonical package path for hardlink-copy fallback
+        # Resolve the canonical package path for independent-copy fallback.
         local canonical_pkg=""
         if [[ "$pkg_type" == "theme" ]]; then
             canonical_pkg="$CANONICAL_WP_CONTENT/themes/$pkg_name"
@@ -63,16 +63,16 @@ cmd_rebuild_composer() {
             fi
         done
 
-        # Re-copy from canonical (hardlink) or composer install
+        # Re-copy from canonical using copy-on-write where supported, or run Composer.
         local rebuilt=0
         for vendor_dir in vendor vendor-prefixed; do
             local dest="$pkg/$vendor_dir"
             local src="$canonical_pkg/$vendor_dir"
             if [[ -d "$src" ]]; then
-                run_with_spinner "  $vendor_dir/: hardlink copy from canonical…" \
-                    cp -Rl "$src" "$dest" \
-                    || { warn "  $vendor_dir/: hardlink copy failed"; continue; }
-                success "  $vendor_dir/: hardlink copy done"
+                run_with_spinner "  $vendor_dir/: copying from canonical (copy-on-write when supported)…" \
+                    copy_tree_cow "$src" "$dest" \
+                    || { warn "  $vendor_dir/: copy failed"; continue; }
+                success "  $vendor_dir/: independent copy done"
                 [[ "$vendor_dir" == "vendor" ]] && rebuilt=1
             fi
         done
