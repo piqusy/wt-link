@@ -13,7 +13,6 @@ printf 'canonical file\n' > "$source_dir/plugin.php"
 
 cat > "$shim_dir/cp" <<'SH'
 #!/usr/bin/env bash
-source_path="${@: -2:1}"
 destination="${@: -1}"
 
 if [[ "${1-}" == '--reflink=auto' || "${COPY_TEST_SCENARIO-}" == 'fallback-fails' ]]; then
@@ -22,7 +21,7 @@ if [[ "${1-}" == '--reflink=auto' || "${COPY_TEST_SCENARIO-}" == 'fallback-fails
     exit 1
 fi
 
-exec /bin/cp -R "$source_path" "$destination"
+exec /bin/cp "$@"
 SH
 chmod +x "$shim_dir/cp"
 PATH="$shim_dir:$PATH"
@@ -36,6 +35,12 @@ copy_tree_cow "$source_dir" "$tmp_dir/worktree/plugin"
 [[ ! -e "$tmp_dir/worktree/plugin/partial-copy" ]]
 [[ ! "$source_dir/plugin.php" -ef "$tmp_dir/worktree/plugin/plugin.php" ]]
 printf 'worktree file\n' > "$tmp_dir/worktree/plugin/plugin.php"
+[[ "$(cat "$source_dir/plugin.php")" == 'canonical file' ]]
+
+ln -s "$source_dir" "$tmp_dir/canonical/plugin-link"
+copy_tree_cow "$tmp_dir/canonical/plugin-link" "$tmp_dir/worktree/plugin-link"
+[[ ! -L "$tmp_dir/worktree/plugin-link" ]]
+printf 'fallback worktree file\n' > "$tmp_dir/worktree/plugin-link/plugin.php"
 [[ "$(cat "$source_dir/plugin.php")" == 'canonical file' ]]
 
 COPY_TEST_SCENARIO=fallback-fails

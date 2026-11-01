@@ -10,7 +10,8 @@ require_pm() {
 }
 # Copy a file or directory tree without sharing inodes with the source.
 # Use filesystem copy-on-write clones where the platform supports them, then
-# fall back to a regular independent copy if cloning is unavailable.
+# fall back to a regular independent copy if cloning is unavailable. Follow
+# source symlinks, but preserve symlinks encountered within a copied tree.
 copy_tree_cow() {
     local source="$1" destination="$2"
 
@@ -19,17 +20,17 @@ copy_tree_cow() {
 
     case "$(uname -s)" in
         Darwin)
-            /bin/cp -cR "$source" "$destination" && return 0
+            /bin/cp -cRH "$source" "$destination" && return 0
             ;;
         Linux)
-            command cp --reflink=auto -R "$source" "$destination" && return 0
+            command cp --reflink=auto -RH "$source" "$destination" && return 0
             ;;
     esac
 
     if [[ -e "$destination" || -L "$destination" ]]; then
         rm -r "$destination" || return 1
     fi
-    command cp -R "$source" "$destination" && return 0
+    command cp -RH "$source" "$destination" && return 0
     if [[ -e "$destination" || -L "$destination" ]]; then
         rm -r "$destination"
     fi

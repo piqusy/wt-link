@@ -49,5 +49,20 @@ copy_tree_cow "$canonical_package/vendor-prefixed" "$composer_package/vendor-pre
 printf 'worktree dependency\n' > "$composer_package/vendor/autoload.php"
 [[ "$(cat "$canonical_package/vendor/autoload.php")" == 'canonical dependency' ]]
 
+# A canonical vendor may itself be a symlink. Resolve only that top-level
+# link; links within the copied tree retain their existing behavior.
+mkdir -p "$tmp_dir/shared-vendor"
+printf 'shared canonical dependency\n' > "$tmp_dir/shared-vendor/autoload.php"
+ln -s autoload.php "$tmp_dir/shared-vendor/nested-link"
+ln -s "$tmp_dir/shared-vendor" "$canonical_package/vendor-linked"
+copy_tree_cow "$canonical_package/vendor-linked" "$composer_package/vendor-linked"
+[[ ! -L "$composer_package/vendor-linked" ]]
+[[ -L "$composer_package/vendor-linked/nested-link" ]]
+[[ ! "$tmp_dir/shared-vendor/autoload.php" -ef "$composer_package/vendor-linked/autoload.php" ]]
+printf 'isolated worktree dependency\n' > "$composer_package/vendor-linked/autoload.php"
+[[ "$(cat "$tmp_dir/shared-vendor/autoload.php")" == 'shared canonical dependency' ]]
+printf 'updated shared dependency\n' > "$tmp_dir/shared-vendor/autoload.php"
+[[ "$(cat "$composer_package/vendor-linked/autoload.php")" == 'isolated worktree dependency' ]]
+
 echo 'PASS: plugin and Composer dependency copies are independent'
 
