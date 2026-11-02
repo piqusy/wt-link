@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [2.17.1] — 2026-11-02
 
 ### Changed
 - Plugin `--hard-copy` mounts, Composer vendor reuse, and `rebuild-composer` now use copy-on-write clones where supported, with independent full-copy fallback. Worktree edits no longer modify canonical files through hard links.
