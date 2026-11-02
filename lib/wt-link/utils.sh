@@ -39,19 +39,14 @@ copy_tree_cow() {
 
 
 # Build the wp-cli invocation prefix for core download, with a raised PHP
-# memory limit. `command -v wp` may resolve to a shell wrapper around wp-cli
-# (e.g. a deprecation-suppressing shim that execs php directly) rather than
-# the official launcher, and such wrappers don't forward WP_CLI_PHP_ARGS —
-# the limit is silently dropped, leaving the default 128M to blow up
-# PharData extraction on larger core tarballs. PHPRC is read by the php
-# binary itself regardless of what wrapper `wp` resolves to, so write the
-# limit to a php.ini in the caller-provided scratch dir and point PHPRC at
-# it instead. Caller owns ini_dir and must create/clean it up.
+# memory limit even when a wrapper ignores WP_CLI_PHP_ARGS or the PHP binary
+# overrides PHP_INI_SCAN_DIR. WP-CLI loads --require files before commands.
+# Caller owns ini_dir and must create/clean it up.
 wp_download_cmd() {
     local memory_limit="$1" ini_dir="$2" wp_bin
     wp_bin="$(command -v wp)" || return 1
-    printf 'memory_limit = %s\n' "$memory_limit" > "$ini_dir/php.ini"
-    printf "PHPRC='%s' '%s'" "$ini_dir" "$wp_bin"
+    printf '%s\n' '<?php ini_set("memory_limit", getenv("WT_LINK_DOWNLOAD_MEMORY_LIMIT"));' > "$ini_dir/memory-limit.php" || return 1
+    printf 'WT_LINK_DOWNLOAD_MEMORY_LIMIT=%q %q --require=%q' "$memory_limit" "$wp_bin" "$ini_dir/memory-limit.php"
 }
 
 # wp-cli outputs deprecation notices to stdout (not stderr) starting with a

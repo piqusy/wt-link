@@ -7,6 +7,7 @@
 
 ### Fixed
 - Composer vendor copies resolve a symlinked canonical vendor directory, keeping worktree writes independent during mount and rebuild.
+- WordPress core downloads apply the PHP memory limit after PHP configuration loads, including when Herd overrides PHP configuration paths.
 
 
 ## [2.17.0] — 2026-09-24

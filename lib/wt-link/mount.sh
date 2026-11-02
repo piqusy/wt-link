@@ -23,7 +23,8 @@ _mount_validate() {
     # Migrate legacy state file from worktree root to registry dir (introduced in v1.8.0).
     # Compute the canonical new path directly (STATE_FILE may already be overridden to the
     # legacy path by the fallback in bin/wt-link, so we cannot rely on it here).
-    local new_state="$REGISTRY_DIR/$SITE_NAME.$(basename "$WORKTREE_ROOT").state"
+    local new_state
+    new_state="$REGISTRY_DIR/$SITE_NAME.$(basename "$WORKTREE_ROOT").state" || :
     local legacy_state="$WORKTREE_ROOT/.worktree-link-state"
     if [[ -f "$legacy_state" && ! -f "$new_state" ]]; then
         mkdir -p "$REGISTRY_DIR"
@@ -471,10 +472,12 @@ _mount_eightshift_pkgs() {
         tmpfiles+=("$tmp")
         pkgnames+=("$pkg_name")
         (
-            run_pm_build "$pm" "$pkg" \
-                && echo "OK: build done" \
-                || { echo "WARN: build had errors — check manually"; exit 1; }
-            state_set "public_built_$pkg_name" "1"
+            if run_pm_build "$pm" "$pkg" && echo "OK: build done"; then
+                state_set "public_built_$pkg_name" "1"
+            else
+                echo "WARN: build had errors — check manually"
+                exit 1
+            fi
         ) >"$tmp" 2>&1 &
         pids+=($!)
     done
