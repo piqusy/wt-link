@@ -110,6 +110,8 @@ cmd_unmount() {
         done
 
         if [[ $removed_plugins -gt 0 ]]; then
+            # Called indirectly by run_with_spinner.
+            # shellcheck disable=SC2329
             _unmount_remove_plugins() {
                 for entry in "$plugins_dir"/*; do
                     local entry_name
@@ -138,6 +140,8 @@ cmd_unmount() {
     fi
 
     # 4. Remove vendor/, node_modules, and built public/ from Eightshift packages ─
+    # Called indirectly by run_with_spinner.
+    # shellcheck disable=SC2329
     _unmount_remove_packages() {
         for pkg in $(find_eightshift_packages); do
             local pkg_basename
@@ -165,6 +169,8 @@ cmd_unmount() {
 
     # 5. Remove WP core files — only if this script installed them ───────────────
     if [[ $has_state -eq 1 && "$(state_get wp_core_installed)" == "1" ]]; then
+        # Called indirectly by run_with_spinner.
+        # shellcheck disable=SC2329
         _unmount_remove_wp_core() {
             for d in wp-admin wp-includes; do
                 [[ -d "$WORKTREE_ROOT/$d" ]] && rm -rf "${WORKTREE_ROOT:?}/$d"
@@ -203,6 +209,8 @@ cmd_unmount() {
         done < <(state_get_all root_file_copied | sort -u)
 
         if [[ $removed_root_files -gt 0 ]]; then
+            # Called indirectly by run_with_spinner.
+            # shellcheck disable=SC2329
             _unmount_remove_root_files() {
                 while IFS= read -r rel_path; do
                     [[ -n "$rel_path" ]] || continue

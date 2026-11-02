@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.17.1] — 2026-11-02
+
+### Changed
+- Plugin `--hard-copy` mounts, Composer vendor reuse, and `rebuild-composer` now use copy-on-write clones where supported, with independent full-copy fallback. Worktree edits no longer modify canonical files through hard links.
+
+### Fixed
+- Composer vendor copies resolve a symlinked canonical vendor directory, keeping worktree writes independent during mount and rebuild.
+- WordPress core downloads apply the PHP memory limit after PHP configuration loads, including when Herd overrides PHP configuration paths.
+
+
 ## [2.17.0] — 2026-09-24
 
 ### Added

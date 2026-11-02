@@ -26,6 +26,8 @@ if ! grep -Fq 'wp_cache_zip' "$MOUNT_FILE" || ! grep -Fq "unzip -q" "$MOUNT_FILE
     exit 1
 fi
 
+# Match the literal variable reference in the spinner implementation.
+# shellcheck disable=SC2016
 if ! grep -Fq 'tail -20 "$tmp_out"' "$RUNTIME_FILE"; then
     echo "Expected spinner failure output to keep the last 20 lines"
     exit 1

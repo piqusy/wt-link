@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Regression: `command -v wp` resolving to a custom wrapper (e.g. a
-# deprecation-suppressing shim that execs php directly) must still receive
-# the raised PHP memory limit. WP_CLI_PHP_ARGS is only honored by the
-# official wp-cli launcher script — a wrapper that execs php itself silently
-# drops it, leaving the default 128M limit and failing PharData extraction
-# on larger core tarballs. PHPRC is read by the php binary itself regardless
-# of the wrapper, so wp_download_cmd must use that instead.
+# Regression: wrappers can ignore WP_CLI_PHP_ARGS, and PHP launchers can
+# override both PHPRC and PHP_INI_SCAN_DIR. WP-CLI must raise the limit after
+# PHP has loaded its configuration and before it runs the download command.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOUNT_FILE="$ROOT_DIR/lib/wt-link/mount.sh"
@@ -20,12 +16,13 @@ fake_bin="$(mktemp -d)"
 ini_dir="$(mktemp -d)"
 trap 'rm -rf "$fake_bin" "$ini_dir"' EXIT
 
-# A wrapper that ignores WP_CLI_PHP_ARGS entirely (like a real-world
-# deprecation-suppressing shim would) but still honors PHPRC, since that is
-# read by the php binary itself, not forwarded by the wrapper.
+# Model a wrapper that ignores WP_CLI_PHP_ARGS and a PHP configuration that
+# sets a lower limit. Emulate WP-CLI loading the --require file before running
+# a command, including on PHP launchers that replace PHP_INI_SCAN_DIR.
 cat > "$fake_bin/wp" <<'EOF'
 #!/usr/bin/env bash
-php -r 'echo ini_get("memory_limit");'
+case "$1" in --require=*) required_file="${1#--require=}" ;; *) exit 1 ;; esac
+php -d memory_limit=128M -d precision=13 -r 'require $argv[1]; echo ini_get("memory_limit") . " " . ini_get("precision");' "$required_file"
 EOF
 chmod +x "$fake_bin/wp"
 
@@ -39,18 +36,17 @@ case "$cmd" in
 esac
 
 case "$cmd" in
-    *PHPRC=*) ;;
+    *--require=*) ;;
     *)
-        echo "FAIL: expected wp_download_cmd to set PHPRC so the limit survives wrapper scripts"
+        echo "FAIL: expected wp_download_cmd to load the memory override before the command"
         exit 1
         ;;
 esac
 
-[[ -f "$ini_dir/php.ini" ]] || error "FAIL: expected wp_download_cmd to write a php.ini into ini_dir"
-grep -Fq "memory_limit = 512M" "$ini_dir/php.ini" || error "FAIL: php.ini does not raise memory_limit"
+[[ -f "$ini_dir/memory-limit.php" ]] || error "FAIL: expected wp_download_cmd to write a memory override"
 
 reported="$(bash -c "$cmd")"
-[[ "$reported" == "512M" ]] || error "FAIL: wrapper's php process did not see the raised memory_limit (got '$reported')"
+[[ "$reported" == "512M 13" ]] || error "FAIL: wrapper's php process did not apply the raised memory_limit and retain existing settings (got '$reported')"
 
 # Mount must verify core actually landed, regardless of invocation path
 if ! grep -Fq 'WP_CORE_MARKER" ]] || error' "$MOUNT_FILE"; then
@@ -58,4 +54,4 @@ if ! grep -Fq 'WP_CORE_MARKER" ]] || error' "$MOUNT_FILE"; then
     exit 1
 fi
 
-echo "PASS: wp_download_cmd raises memory_limit via PHPRC, surviving wrapper scripts that drop WP_CLI_PHP_ARGS"
+echo "PASS: wp_download_cmd raises memory_limit before the command, surviving wrappers and PHP configuration overrides"

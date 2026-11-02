@@ -10,20 +10,20 @@
 #     • Copies wp-config.php and root runtime files from canonical site
 #     • Symlinks git-untracked plugins and uploads from canonical site
 #     • Installs JS deps in each Eightshift package via auto-detected PM
-#     • Hardlink-copies composer vendor/ from canonical (falls back to composer install)
+#     • Copies plugin and Composer vendor trees independently, using copy-on-write where supported
 #     • Builds JS/CSS assets via package's package manager
 #     • Runs `herd link <site-name>` to point local domain here
-#
+# 
 #   On `unmount` every symlink is removed, WP core files are deleted, and
 #   `herd unlink` restores the canonical site.
-#
+# 
 # USAGE
 #   wt-link mount              Set up current worktree as the local dev site
-#   wt-link mount --hard-copy  Same but hard-copy untracked plugins (parallel cp -Rl)
+#   wt-link mount --hard-copy  Copy untracked plugins instead of symlinking
 #   wt-link unmount            Tear it down and restore the canonical site
 #   wt-link status             Show what is linked / installed
 #   wt-link mount --cwd PATH   Mount a specific worktree directory
-#
+# 
 #   wp-cli, herd
 #   Composer only when an Eightshift package needs dependencies installed
 #   Node package manager: bun, npm, yarn, or pnpm for Eightshift package assets
@@ -46,7 +46,7 @@
 
 set -euo pipefail
 
-WT_LINK_VERSION="2.17.0"
+WT_LINK_VERSION="2.17.1"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # COLOURS
@@ -129,8 +129,8 @@ case "${1:-help}" in
         echo "  --composer-flag=ARG  Pass ARG to composer install on mount/rebuild-composer (repeatable)"
         echo "                       Copied vendor/ skips composer install, even with flags"
         echo "  --bun-flag=ARG       Pass ARG to bun install on mount/rebuild-node --build (repeatable)"
-        echo "  --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
-  --no-indicator  Skip injecting the worktree branch indicator into the site"
+        echo "  --hard-copy     Copy untracked plugins independently instead of symlinking"
+        echo "  --no-indicator  Skip injecting the worktree branch indicator into the site"
         echo "  --plugins     Target plugin eightshift packages instead of themes"
         echo "  --all         Target both theme and plugin eightshift packages"
         echo ""

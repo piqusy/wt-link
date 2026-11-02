@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MOUNT_FILE="$ROOT_DIR/lib/wt-link/mount.sh"
 
+# The variable and trailing backslash are literal source text.
+# shellcheck disable=SC2016,SC1003
 expected_line='            run_with_spinner "Downloading WordPress ${WP_VERSION}…" \'
 grep -Fq "$expected_line" "$MOUNT_FILE" || {
     echo "Expected braced WP_VERSION in download spinner message"

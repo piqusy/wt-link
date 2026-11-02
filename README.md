@@ -51,7 +51,7 @@ Options:
   --cwd PATH      Run against a specific worktree directory (default: current dir)
   --force         Switch domain to this worktree without prompting (shows a notice)
   --yes / -y      Proceed non-interactively with no output (for hook contexts)
-  --hard-copy     Hard-copy untracked plugins instead of symlinking (parallel cp -Rl)
+  --hard-copy     Copy untracked plugins independently instead of symlinking (parallel)
   --composer-flag=ARG  Pass ARG to composer install on mount/rebuild-composer (repeatable)
   --bun-flag=ARG       Pass ARG to bun install on mount/rebuild-node --build (repeatable)
   --no-indicator  Skip injecting the worktree branch indicator into the site
@@ -72,7 +72,7 @@ CANONICAL_SITE=~/Sites/myproject wt-link mount
 # Force re-mount (e.g. after canonical site deps changed)
 wt-link mount --force
 
-# Hard-copy plugins instead of symlinking (filesystem-isolated, faster plugin activation)
+# Copy plugins independently; use copy-on-write where supported
 wt-link mount --hard-copy
 
 # Tear down the active worktree from any project worktree, including canonical
@@ -100,11 +100,11 @@ wt-link rebuild-node --build --bun-flag=--ignore-scripts --bun-flag=--no-progres
 1. **WP core** — Downloads WordPress (version from `setup.json`, or inferred via `wp core version` when `core` is missing) or extracts from WP-CLI cache
 2. **wp-config.php** — Copies from the canonical site
 3. **Root runtime files** — Copies `wt-link.json`, `wt-link.local.json`, `.env`, and `.env.*` variants from the canonical site when they are missing in the worktree (example templates like `.env.example` are skipped)
-4. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` to hard-copy instead (parallel `cp -Rl`, useful when plugins need filesystem isolation between worktrees)
+4. **Plugins** — Symlinks git-untracked plugins from the canonical site; use `--hard-copy` for independent copies instead. Copies use filesystem copy-on-write where supported, with a regular independent-copy fallback.
 5. **Uploads** — Symlinks `wp-content/uploads` from the canonical site
 6. **Branch indicator** — Injects `wp-content/mu-plugins/wt-link-indicator.php` with the current branch name baked in; shows a fixed bottom-center toast (⎇ branch) on both frontend and admin, click to dismiss. Pass `--no-indicator` to skip.
 7. **Eightshift packages** — For each theme/plugin with `eightshift-libs`:
-   - Hardlink-copies `vendor/` and `vendor-prefixed/` from the canonical site (`cp -Rl`; zero extra disk on APFS, falls back to `composer install` if canonical has none)
+   - Copies `vendor/` and `vendor-prefixed/` from the canonical site using copy-on-write where supported, with a regular independent-copy fallback (`composer install` runs if canonical `vendor/` is unavailable)
    - Runs `<pm> install` sequentially per theme — package manager auto-detected from lockfile (`bun`, `yarn`, `pnpm`, or `npm`)
    - Runs `<pm> run build` in parallel across themes; skips build for plugins
 8. **Herd link** — Runs `herd link <site-name>` so the worktree is live at `https://<site-name>.test/`. If `urls.subdomains` is set, each subdomain is linked and secured as well (e.g. `https://research.mysite.test/`)
